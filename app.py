@@ -2,173 +2,212 @@ import streamlit as st
 import feedparser
 import google.generativeai as genai
 from bs4 import BeautifulSoup
-import re
-from datetime import datetime
+import json
+import os
+from datetime import datetime, timedelta
+import time
 
-# --- 1. Page Configuration & Material Design CSS ---
+# --- 1. 환경 설정 및 데이터 저장 로직 ---
+SETTINGS_FILE = "settings.json"
+
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "api_key": "",
+        "pick_filter": "혁신적인 UI/UX, 하드웨어 혁신, AI 에이전트 결합 사례",
+        "ai_prompt": "당신은 차세대 경험 기획팀의 수석 전략가입니다. 이 제품의 핵심을 한국어로 요약하고, 우리 회사의 RTOS 워치나 포켓 디바이스 프로젝트에 적용할 구체적 아이디어 2개를 제안하세요.",
+        "sensing_period": 14,
+        "channels": {
+            "글로벌": [{"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "active": True}],
+            "중국": [{"name": "36Kr", "url": "https://36kr.com/feed", "active": True}],
+            "일본": [{"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True}]
+        }
+    }
+
+def save_settings(settings):
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=4)
+
+if "settings" not in st.session_state:
+    st.session_state.settings = load_settings()
+
+# --- 2. Material Design 스타일 정의 ---
 st.set_page_config(page_title="NOD Sensing Dashboard", layout="wide")
-
 st.markdown("""
 <style>
-    /* Google Material Design Inspired Styles */
-    .stApp { background-color: #f8f9fa; }
-    .main-title { font-size: 32px; font-weight: 700; color: #1a73e8; margin-bottom: 20px; }
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif; background-color: #f8f9fa; }
     .card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
-        border: 1px solid #e0e0e0;
-        transition: transform 0.2s ease-in-out;
+        background: white; padding: 20px; border-radius: 16px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px;
+        border: 1px solid #efefef;
     }
-    .card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.15); }
-    .card-title { font-size: 18px; font-weight: 600; color: #202124; margin-bottom: 8px; line-height: 1.4; }
-    .card-summary { font-size: 14px; color: #5f6368; margin-bottom: 12px; line-height: 1.5; }
-    .card-link { font-size: 13px; color: #1a73e8; text-decoration: none; font-weight: 500; }
-    .best-pick-label { background-color: #fbbc04; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-bottom: 10px; display: inline-block; }
-    .thumbnail { width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; background-color: #eee; }
+    .card-title { font-size: 1.1rem; font-weight: 700; color: #1a1b1f; margin-bottom: 10px; }
+    .card-summary { font-size: 0.9rem; color: #4e525a; line-height: 1.6; margin-bottom: 15px; }
+    .thumbnail { width: 100%; height: 160px; object-fit: cover; border-radius: 10px; margin-bottom: 15px; background: #f0f0f0; }
+    .status-tag { padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+    .stButton>button { border-radius: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. Session State Initialization ---
-if 'api_key' not in st.session_state: st.session_state.api_key = ""
-if 'user_feeds' not in st.session_state:
-    st.session_state.user_feeds = {
-        "글로벌": [{"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "active": True}],
-        "중국": [{"name": "36Kr", "url": "https://36kr.com/feed", "active": True}, {"name": "TechNode", "url": "https://technode.com/feed/", "active": True}],
-        "일본": [{"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True}]
-    }
-
-# --- 3. Sidebar: Configuration & Feed Management ---
+# --- 3. 사이드바 구성 (Key 관리 & 채널 관리) ---
 with st.sidebar:
-    st.title("⚙️ Dashboard Settings")
+    st.title("🛡️ NOD 전략 센터")
     
-    # API Key Section
-    new_key = st.text_input("Gemini API Key", value=st.session_state.api_key, type="password", help="키를 입력하면 세션 동안 유지됩니다.")
-    if new_key != st.session_state.api_key:
-        st.session_state.api_key = new_key
-        st.rerun()
+    # API Key Management
+    st.subheader("AI 연결 상태")
+    if st.session_state.settings["api_key"]:
+        st.success("✅ Gemini Key 등록 완료")
+        if st.button("Key 수정"):
+            st.session_state.settings["api_key"] = ""
+            save_settings(st.session_state.settings)
+            st.rerun()
+    else:
+        st.error("❌ Key 미등록")
+        new_key = st.text_input("Gemini API Key 입력", type="password")
+        if st.button("저장하기"):
+            st.session_state.settings["api_key"] = new_key
+            save_settings(st.session_state.settings)
+            st.rerun()
 
     st.divider()
-    
-    # Feed Management
-    st.subheader("🌐 채널 관리")
-    category = st.selectbox("카테고리 선택", list(st.session_state.user_feeds.keys()))
-    
-    with st.expander(f"{category} 채널 추가"):
-        new_name = st.text_input("사이트 이름")
-        new_url = st.text_input("RSS URL")
-        if st.button("추가하기"):
-            if new_name and new_url:
-                st.session_state.user_feeds[category].append({"name": new_name, "url": new_url, "active": True})
-                st.success(f"{new_name} 추가됨!")
+
+    # 계층형 채널 관리
+    st.subheader("🌐 센싱 채널 설정")
+    for cat, feeds in st.session_state.settings["channels"].items():
+        with st.expander(f"📍 {cat}"):
+            # 전체 선택/해제
+            cat_active = st.checkbox(f"{cat} 전체 선택", value=True, key=f"cat_{cat}")
+            
+            for i, f in enumerate(feeds):
+                f["active"] = st.checkbox(f["name"], value=f["active"] if cat_active else False, key=f"check_{cat}_{i}")
+            
+            st.markdown("---")
+            if st.button(f"➕ {cat}에 채널 추가", key=f"add_{cat}"):
+                st.session_state.add_mode = cat
+
+    # 채널 추가 폼 (팝업 형태 시뮬레이션)
+    if "add_mode" in st.session_state:
+        with st.form("add_channel_form"):
+            st.write(f"**[{st.session_state.add_mode}] 새 채널 추가**")
+            n_name = st.text_input("사이트 이름")
+            n_url = st.text_input("RSS 또는 링크 URL")
+            if st.form_submit_button("추가 완료"):
+                st.session_state.settings["channels"][st.session_state.add_mode].append({"name": n_name, "url": n_url, "active": True})
+                save_settings(st.session_state.settings)
+                del st.session_state.add_mode
                 st.rerun()
 
-    st.divider()
+    # 설정 메뉴 (하단)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    with st.expander("⚙️ 고급 설정"):
+        st.write("🎯 **Pick 필터 기준**")
+        st.session_state.settings["pick_filter"] = st.text_area("필터 키워드", value=st.session_state.settings["pick_filter"])
+        
+        st.write("🤖 **AI 분석 프롬프트**")
+        st.session_state.settings["ai_prompt"] = st.text_area("프롬프트 문구", value=st.session_state.settings["ai_prompt"])
+        
+        st.write("📅 **수집 기간 설정**")
+        st.session_state.settings["sensing_period"] = st.slider("최근 며칠간?", 1, 60, st.session_state.settings["sensing_period"])
+        
+        if st.button("모든 설정 저장"):
+            save_settings(st.session_state.settings)
+            st.toast("설정이 저장되었습니다!")
+
+# --- 4. 뉴스 수집 및 번역 처리 로직 ---
+def fetch_and_process():
+    all_news = []
+    limit_date = datetime.now() - timedelta(days=st.session_state.settings["sensing_period"])
     
-    # Toggle Switches for Feeds
-    st.subheader("✅ 활성 채널 선택")
-    selected_urls = []
-    for cat, feeds in st.session_state.user_feeds.items():
-        st.write(f"**{cat}**")
+    active_sources = []
+    for cat, feeds in st.session_state.settings["channels"].items():
         for f in feeds:
-            is_active = st.checkbox(f["name"], value=f["active"], key=f"{cat}_{f['name']}")
-            f["active"] = is_active
-            if is_active: selected_urls.append(f)
+            if f.get("active"): active_sources.append(f)
 
-# --- 4. Logic: Fetching and Parsing News ---
-def get_thumbnail(entry):
-    # Try to find an image in the description or media tags
-    desc = entry.get('description', '')
-    soup = BeautifulSoup(desc, 'html.parser')
-    img_tag = soup.find('img')
-    if img_tag and img_tag.get('src'): return img_tag['src']
-    if 'media_content' in entry: return entry['media_content'][0]['url']
-    return "https://via.placeholder.com/300x180?text=No+Image"
+    for src in active_sources:
+        feed = feedparser.parse(src["url"])
+        for entry in feed.entries:
+            # 날짜 필터링
+            pub_date = datetime.fromtimestamp(time.mktime(entry.published_parsed)) if 'published_parsed' in entry else datetime.now()
+            if pub_date < limit_date: continue
 
-def clean_summary(html_text):
-    text = BeautifulSoup(html_text, "html.parser").get_text()
-    return text[:120] + "..." if len(text) > 120 else text
+            # 이미지 추출
+            soup = BeautifulSoup(entry.get("summary", ""), "html.parser")
+            img = soup.find("img")
+            img_url = img["src"] if img else "https://via.placeholder.com/400x250?text=No+Image"
+            
+            all_news.append({
+                "title": entry.title,
+                "link": entry.link,
+                "summary": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:150],
+                "img": img_url,
+                "source": src["name"],
+                "date": pub_date.strftime("%Y-%m-%d")
+            })
+    return all_news
 
-all_entries = []
-for f in selected_urls:
-    d = feedparser.parse(f["url"])
-    for entry in d.entries[:10]:
-        entry['source_name'] = f["name"]
-        entry['thumbnail'] = get_thumbnail(entry)
-        all_entries.append(entry)
+# --- 5. AI 분석 엔진 (한글 번역 및 인사이트) ---
+def get_ai_insight(news_item):
+    if not st.session_state.settings["api_key"]:
+        return "API Key를 먼저 등록해 주세요."
+    
+    genai.configure(api_key=st.session_state.settings["api_key"])
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
+    
+    prompt = f"""
+    내용: 제목({news_item['title']}), 요약({news_item['summary']})
+    작업:
+    1. 위 내용을 한국어로 번역하고 핵심을 1문장으로 요약할 것.
+    2. {st.session_state.settings['ai_prompt']}
+    모든 답변은 한국어로 정중하게 작성하세요.
+    """
+    response = model.generate_content(prompt)
+    return response.text
 
-# Sort by date
-all_entries.sort(key=lambda x: x.get('published_parsed', datetime.now().timetuple()), reverse=True)
+# --- 6. 메인 화면 구성 ---
+st.markdown(f"### 🚀 NOD 글로벌 IT 센싱 대시보드")
+st.caption(f"기준: 최근 {st.session_state.settings['sensing_period']}일 이내 | 필터: {st.session_state.settings['pick_filter']}")
 
-# --- 5. Main UI Content ---
-st.markdown('<div class="main-title">🚀 Next-Gen Experience Planning Sensing</div>', unsafe_allow_html=True)
+with st.spinner("최신 뉴스를 가져오는 중..."):
+    news_list = fetch_and_process()
 
-if not st.session_state.api_key:
-    st.warning("⚠️ 사이드바에서 Gemini API Key를 먼저 입력해주세요.")
+if not news_list:
+    st.info("조건에 맞는 뉴스가 없습니다. 기간 설정을 조절해 보세요.")
+else:
+    # 🌟 Best Pick Section
+    st.subheader("🔥 Today's Best Pick (AI 추천 기반)")
+    top_cols = st.columns(3)
+    for i, item in enumerate(news_list[:3]):
+        with top_cols[i]:
+            st.markdown(f"""
+            <div class="card">
+                <img src="{item['img']}" class="thumbnail">
+                <div class="card-title">{item['title']}</div>
+                <div class="card-summary">{item['summary']}...</div>
+                <p style='font-size:0.8rem; color:blue;'>Source: {item['source']} | {item['date']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button(f"전략 분석 보고서 보기", key=f"btn_top_{i}"):
+                with st.expander("📝 AI 인사이트 결과", expanded=True):
+                    st.write(get_ai_insight(item))
 
-# Section: Best Pick (Top 3)
-st.subheader("🌟 Today's Best Pick")
-best_cols = st.columns(3)
-for i, entry in enumerate(all_entries[:3]):
-    with best_cols[i]:
-        st.markdown(f"""
-        <div class="card">
-            <div class="best-pick-label">BEST PICK {i+1}</div>
-            <img src="{entry['thumbnail']}" class="thumbnail">
-            <div class="card-title">{entry.title}</div>
-            <div class="card-summary">{clean_summary(entry.get('summary', ''))}</div>
-            <a href="{entry.link}" target="_blank" class="card-link">자세히 보기 ({entry['source_name']})</a>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button(f"AI 전략 분석", key=f"best_{i}"):
-            st.session_state.analysis_target = entry
+    st.divider()
 
-st.divider()
-
-# Section: Main Sensing Stream (Grid View)
-st.subheader("📂 Sensing Stream")
-cols = st.columns(3)
-for i, entry in enumerate(all_entries[3:15]):
-    with cols[i % 3]:
-        st.markdown(f"""
-        <div class="card">
-            <img src="{entry['thumbnail']}" class="thumbnail">
-            <div class="card-title">{entry.title}</div>
-            <div class="card-summary">{clean_summary(entry.get('summary', ''))}</div>
-            <a href="{entry.link}" target="_blank" class="card-link">원문 링크 ({entry['source_name']})</a>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button(f"AI 전략 분석 수행", key=f"main_{i}"):
-            st.session_state.analysis_target = entry
-
-# --- 6. AI Analysis Sidebar/Popup Logic ---
-if 'analysis_target' in st.session_state and st.session_state.api_key:
-    target = st.session_state.analysis_target
-    with st.sidebar:
-        st.divider()
-        st.subheader("🔍 Deep-dive Analysis")
-        st.info(f"대상: {target.title}")
-        
-        with st.spinner("Analyzing..."):
-            try:
-                genai.configure(api_key=st.session_state.api_key)
-                model = genai.GenerativeModel('models/gemini-1.5-flash')
-                prompt = f"""
-                당신은 차세대 경험 기획팀의 수석 전략가입니다. 아래 뉴스를 읽고 우리 팀의 NOD(New Opportunity Discovery) 프로젝트 관점에서 분석하세요.
-                내용: {target.title} - {target.get('summary', '')}
-                
-                분석 요구사항:
-                1. 핵심 기술/서비스 한줄 요약
-                2. 이 시도가 기존 시장을 파괴하는 신기한 지점
-                3. 우리 회사의 RTOS 워치나 포켓 컴퓨팅 디바이스 프로젝트에 적용할 구체적 아이디어 2가지
-                """
-                response = model.generate_content(prompt)
-                st.write(response.text)
-            except Exception as e:
-                st.error(f"분석 중 오류 발생: {e}")
-        
-        if st.button("분석창 닫기"):
-            del st.session_state.analysis_target
-            st.rerun()
+    # 📂 전체 스트림 카드뷰
+    st.subheader("📋 실시간 센싱 스트림")
+    rows = [news_list[i:i + 3] for i in range(3, min(len(news_list), 15), 3)]
+    for row in rows:
+        cols = st.columns(3)
+        for i, item in enumerate(row):
+            with cols[i]:
+                st.markdown(f"""
+                <div class="card">
+                    <img src="{item['img']}" class="thumbnail">
+                    <div class="card-title" style="font-size:0.95rem;">{item['title']}</div>
+                    <a href="{item['link']}" target="_blank" style="text-decoration:none; font-size:0.8rem; color:#1a73e8;">원문 링크 보기</a>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"AI 분석", key=f"btn_list_{item['link']}"):
+                    st.info(get_ai_insight(item))
