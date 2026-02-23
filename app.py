@@ -160,4 +160,118 @@ st.markdown("""
     .modern-card { background: white; padding: 25px; border-radius: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #edf2f7; height: 100%; display: flex; flex-direction: column; transition: all 0.3s ease; }
     .modern-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.08); border-color: #034EA2; }
     .card-thumb { width: 100%; height: 190px; object-fit: cover; border-radius: 20px; margin-bottom: 18px; background-color: #f0f0f0; }
-    .card-badge { background: #eef2ff; color: #034EA2; padding: 4px 12px; border-radius: 100px; font-size: 0.7rem; font-weight: 700;
+    .card-badge { background: #eef2ff; color: #034EA2; padding: 4px 12px; border-radius: 100px; font-size: 0.7rem; font-weight: 700; display: inline-block; margin-bottom: 12px; }
+    .card-title-ko { font-size: 1.1rem; font-weight: 700; color: #1a1c1e; line-height: 1.4; margin-bottom: 4px; }
+    .card-title-en { font-size: 0.8rem; color: #8e8e93; font-style: italic; margin-bottom: 12px; display: block; }
+    .card-summary { font-size: 0.85rem; color: #4a5568; line-height: 1.6; flex-grow: 1; margin-bottom: 15px; }
+    .link-btn { font-size: 0.8rem; font-weight: 700; color: #034EA2; text-decoration: none; }
+</style>
+""", unsafe_allow_html=True)
+
+# --- 5. 사이드바 제어 ---
+with st.sidebar:
+    st.title("🛡️ NOD Controller")
+    if "show_api" not in st.session_state: st.session_state.show_api = False
+    
+    current_key = st.session_state.settings.get("api_key", "")
+    if current_key and not st.session_state.show_api:
+        st.success("✅ AI 가동 중")
+        if st.button("키 수정"): st.session_state.show_api = True; st.rerun()
+    else:
+        new_key = st.text_input("Gemini API Key", value=current_key, type="password")
+        if st.button("저장 및 적용"):
+            st.session_state.settings["api_key"] = new_key; st.session_state.show_api = False; save_settings(st.session_state.settings); st.rerun()
+
+    st.divider()
+    st.subheader("🌐 채널 그룹")
+    for cat in list(st.session_state.settings["channels"].keys()):
+        st.session_state.settings["category_active"][cat] = st.toggle(cat, value=st.session_state.settings["category_active"].get(cat, True))
+
+    st.divider()
+    with st.expander("⚙️ 고급 설정", expanded=True):
+        # [날짜 조절 슬라이더 추가]
+        st.session_state.settings["sensing_period"] = st.slider("수집 기간 (일 이내)", 1, 30, st.session_state.settings.get("sensing_period", 7))
+        st.session_state.settings["filter_prompt"] = st.text_area("News Filter", value=st.session_state.settings["filter_prompt"])
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings["ai_prompt"])
+        st.session_state.settings["max_articles"] = st.selectbox("표시 기사 개수", [10, 20, 30, 50], index=2)
+
+    if st.button("🚀 Apply & Sensing Start", use_container_width=True):
+        save_settings(st.session_state.settings)
+        if "news_data" in st.session_state: del st.session_state.news_data
+        st.rerun()
+
+# --- 6. 메인 렌더링 ---
+st.markdown("""<div class="header-container"><div class="header-title">Samsung NOD Strategy Hub</div><div>Future Experience Sensing & Opportunity Discovery</div></div>""", unsafe_allow_html=True)
+
+if "news_data" not in st.session_state:
+    st.session_state.news_data = fetch_sensing_data(st.session_state.settings)
+
+raw_data = st.session_state.news_data
+
+if raw_data:
+    # 🌟 Top Picks (고정 6개)
+    st.subheader("🌟 Strategic Top Picks")
+    top_6 = raw_data[:6]
+    rows = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
+    for row in rows:
+        cols = st.columns(3)
+        for j, item in enumerate(row):
+            with cols[j]:
+                st.markdown(f"""
+                <div class="modern-card">
+                    <div class="card-badge">{item['source']} | {item['date']}</div>
+                    <img src="{item['img']}" class="card-thumb">
+                    <div class="card-title-ko">{item['title_ko']}</div>
+                    <span class="card-title-en">{item['title_en']}</span>
+                    <div class="card-summary">{item['summary_ko']}...</div>
+                    <a href="{item['link']}" target="_blank" class="link-btn">🔗 원본 기사 읽기</a>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("🔍 Deep-dive", key=f"dd_{item['id']}"):
+                    model = get_ai_model()
+                    if model:
+                        with st.spinner("Samsung 전략 분석 중..."):
+                            try:
+                                res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
+                                st.info(res.text)
+                            except Exception as e: st.error(f"분석 오류: {e}")
+                    else: st.error("API Key를 다시 확인해 주세요.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.divider()
+
+    # 📋 Sensing Stream (필터/소팅 적용)
+    st.subheader("📋 Sensing Stream")
+    
+    with st.container():
+        c1, c2, c3 = st.columns([2, 2, 2])
+        with c1: sort_val = st.selectbox("📅 정렬", ["최신순", "과거순", "AI 관련도순"])
+        with c2: cat_val = st.multiselect("📂 카테고리", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
+        with c3: search_val = st.text_input("🔍 스트림 내 검색", "")
+
+    stream_data = [d for d in raw_data[6:] if d["category"] in cat_val]
+    if search_val: stream_data = [d for d in stream_data if search_val.lower() in d["title_ko"].lower()]
+    if sort_val == "최신순": stream_data.sort(key=lambda x: x["date_obj"], reverse=True)
+    elif sort_val == "과거순": stream_data.sort(key=lambda x: x["date_obj"])
+    else: stream_data.sort(key=lambda x: x["score"], reverse=True)
+
+    for item in stream_data[:st.session_state.settings["max_articles"]]:
+        with st.container():
+            col_img, col_txt = st.columns([1, 4])
+            with col_img: st.image(item['img'], use_container_width=True)
+            with col_txt:
+                st.markdown(f"""
+                <div style="margin-bottom:15px;">
+                    <div class="card-badge" style="margin-bottom:5px;">{item['category']} | {item['source']} | {item['date']}</div>
+                    <div class="card-title-ko" style="font-size:1.1rem;">{item['title_ko']}</div>
+                    <span class="card-title-en">{item['title_en']}</span>
+                    <p style="font-size:0.9rem; color:#4a5568;">{item['summary_ko']}...</p>
+                    <a href="{item['link']}" target="_blank" class="link-btn">🔗 원본 보기</a>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("Quick Analysis", key=f"qa_{item['id']}"):
+                    model = get_ai_model()
+                    if model: st.success(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}").text)
+            st.markdown("<hr style='border-top: 1px solid #edf2f7;'>", unsafe_allow_html=True)
+else:
+    st.info("조건에 맞는 뉴스가 없습니다. 설정을 변경하고 Apply 버튼을 눌러보세요.")
