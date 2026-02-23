@@ -118,17 +118,14 @@ def get_rescue_thumbnail(entry):
         except: pass
     return f"https://s.wordpress.com/mshots/v1/{link}?w=600" if link else "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80"
 
-# [수정 사항] 모델 호출 로직을 직접 지정하여 안정성 강화
+# [수정] 모델 호출 로직을 직접 지정하여 안정성 강화 (Deep-dive 에러 해결)
 def get_ai_model():
     api_key = st.session_state.settings.get("api_key", "").strip()
-    if not api_key:
-        return None
+    if not api_key: return None
     try:
         genai.configure(api_key=api_key)
-        # 1.5 Flash 모델 직접 호출 (목록 조회 단계 생략으로 에러 방지)
         return genai.GenerativeModel('gemini-1.5-flash')
-    except:
-        return None
+    except: return None
 
 # --- 3. 데이터 엔진 (진행률 및 에러 방어) ---
 def fetch_sensing_data(settings):
@@ -190,7 +187,7 @@ def fetch_sensing_data(settings):
     return all_news
 
 # --- 4. 모던 UI 스타일 ---
-st.set_page_config(page_title="NOD Strategy Hub v8.1", layout="wide")
+st.set_page_config(page_title="Samsung NOD Center v8.2", layout="wide")
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+KR:wght@300;400;700&display=swap');
@@ -213,21 +210,14 @@ with st.sidebar:
     st.title("🛡️ NOD Controller")
     if "show_api" not in st.session_state: st.session_state.show_api = False
     
-    # [수정] 키가 있어도 실시간 반영을 위해 입력칸 표시 로직 정교화
-    api_val = st.session_state.settings.get("api_key", DEFAULT_API_KEY)
-    
-    if api_val and not st.session_state.show_api:
+    current_api = st.session_state.settings.get("api_key", DEFAULT_API_KEY)
+    if current_api and not st.session_state.show_api:
         st.success("✅ AI 가동 중")
-        if st.button("키 수정"):
-            st.session_state.show_api = True
-            st.rerun()
+        if st.button("키 수정"): st.session_state.show_api = True; st.rerun()
     else:
-        new_key = st.text_input("Gemini API Key", value=api_val, type="password")
+        new_key = st.text_input("Gemini API Key", value=current_api, type="password")
         if st.button("저장 및 적용"):
-            st.session_state.settings["api_key"] = new_key
-            st.session_state.show_api = False
-            save_settings(st.session_state.settings)
-            st.rerun()
+            st.session_state.settings["api_key"] = new_key; st.session_state.show_api = False; save_settings(st.session_state.settings); st.rerun()
 
     st.divider()
     st.subheader("🌐 채널 그룹")
@@ -240,9 +230,11 @@ with st.sidebar:
 
     st.divider()
     with st.expander("⚙️ 고급 설정", expanded=True):
+        # [수정] 수집 날짜 조절 슬라이더 추가 (1-30일)
+        st.session_state.settings["sensing_period"] = st.slider("수집 날짜 범위 (최근 N일)", 1, 30, st.session_state.settings.get("sensing_period", 7))
         st.session_state.settings["filter_prompt"] = st.text_area("News Filter", value=st.session_state.settings["filter_prompt"])
         st.session_state.settings["additional_filter"] = st.text_area("Additional Filter", value=st.session_state.settings.get("additional_filter", ""))
-        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings["ai_prompt"])
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings.get("ai_prompt", ""))
         st.session_state.settings["filter_strength"] = st.slider("Filter 강도", 1, 5, st.session_state.settings["filter_strength"])
         st.session_state.settings["max_articles"] = st.selectbox("기사 개수", [10, 20, 30, 50], index=1)
 
@@ -254,7 +246,6 @@ with st.sidebar:
 # --- 6. 메인 렌더링 ---
 st.markdown("""<div class="header-container"><div class="header-title">Samsung NOD Strategy Hub</div><div>Future Experience Sensing & Opportunity Discovery</div></div>""", unsafe_allow_html=True)
 
-# 재센싱 방지 로직 (st.session_state 활용)
 if "news_data" not in st.session_state:
     st.session_state.news_data = fetch_sensing_data(st.session_state.settings)
 
@@ -279,8 +270,6 @@ if raw_data:
                     <a href="{item['link']}" target="_blank" class="link-btn">🔗 원본 기사 읽기</a>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # [수정 지점] 딥다이브 버튼 에러 수정
                 if st.button("🔍 Deep-dive", key=f"dd_{item['id']}"):
                     model = get_ai_model()
                     if model:
@@ -288,10 +277,8 @@ if raw_data:
                             try:
                                 res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
                                 st.info(res.text)
-                            except Exception as e:
-                                st.error(f"분석 오류: {e}")
-                    else:
-                        st.error("API 키를 인식하지 못했습니다. 사이드바 설정을 확인해 주세요.")
+                            except Exception as e: st.error(f"분석 오류: {e}")
+                    else: st.error("API Key 확인 필요")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.divider()
@@ -307,7 +294,6 @@ if raw_data:
 
     stream_data = [d for d in raw_data[6:] if d["category"] in cat_val]
     if search_val: stream_data = [d for d in stream_data if search_val.lower() in d["title_ko"].lower()]
-    
     if sort_val == "최신순": stream_data.sort(key=lambda x: x["date_obj"], reverse=True)
     elif sort_val == "과거순": stream_data.sort(key=lambda x: x["date_obj"])
     else: stream_data.sort(key=lambda x: x["score"], reverse=True)
@@ -328,11 +314,7 @@ if raw_data:
                 """, unsafe_allow_html=True)
                 if st.button("Quick Analysis", key=f"qa_{item['id']}"):
                     model = get_ai_model()
-                    if model:
-                        res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
-                        st.success(res.text)
-                    else:
-                        st.error("API 키 오류")
+                    if model: st.success(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}").text)
             st.markdown("<hr style='border-top: 1px solid #edf2f7;'>", unsafe_allow_html=True)
 else:
     st.info("조건에 맞는 뉴스가 없습니다. 설정을 변경하고 Apply 버튼을 눌러보세요.")
