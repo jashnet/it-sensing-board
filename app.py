@@ -10,7 +10,7 @@ from deep_translator import GoogleTranslator
 import requests
 import hashlib
 
-# --- 1. 설정 및 기본값 (새로운 필터/개수/강도 설정 추가) ---
+# --- 1. 설정 및 기본값 ---
 SETTINGS_FILE = "nod_samsung_pro_v7.json"
 DEFAULT_API_KEY = "AIzaSyCW7kwkCqCSN-usKFG9gwcPzYlHwtQW_DQ"
 
@@ -25,7 +25,7 @@ def default_settings():
         "filter_prompt": """당신은 삼성전자의 차세대 경험기획(Next-Gen UX) 전문가입니다. 
         혁신적 인터페이스, 파괴적 AI 기능, 스타트업의 신규 디바이스 시도에 해당하는 뉴스 위주로 판별하세요.""",
         "ai_prompt": """삼성전자(Samsung) 기획자 관점에서 3단계 분석을 수행하라:
-        a) Fact Summary: 핵심 사실 요약
+        a) Fact Summary: 핵심 사실 요약 (한국어로 자연스럽게)
         b) 3-Year Future Impact: 향후 3년 내 에코시스템 변화 예측
         c) Samsung Takeaway: 삼성 제품 혁신을 위한 시사점""",
         "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
@@ -140,7 +140,7 @@ def get_ai_model():
         return genai.GenerativeModel(target)
     except: return None
 
-@st.cache_data(ttl=3600)
+# 캐시 비활성화 또는 ttl 조정을 고려 (진행률 표시를 위해)
 def fetch_sensing_data(settings):
     all_news = []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
@@ -148,50 +148,69 @@ def fetch_sensing_data(settings):
     
     strength_desc = ["매우 완화됨", "완화됨", "보통", "엄격함", "매우 엄격함"]
     
+    # 1. 진행률 계산을 위한 활성 피드 수 확인
+    active_feeds = []
     for cat, feeds in settings["channels"].items():
-        if not settings["category_active"].get(cat, True): continue
-        for f in feeds:
-            if not f["active"]: continue
-            d = feedparser.parse(f["url"])
-            for entry in d.entries[:10]: # 수집은 더 넉넉하게
-                try:
-                    p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
-                    if p_date < limit: continue
-                    
-                    relevance_score = 5 # 기본 점수
-                    if model:
-                        filter_query = f"""
-                        [필터 기준] {settings['filter_prompt']}
-                        [추가 필터] {settings['additional_filter']}
-                        [필터 강도] {strength_desc[settings['filter_strength']-1]}
-                        [제목] {entry.title}
-                        결과를 '유효성(True/False),관련도점수(1-10)' 형식으로만 답해.
-                        """
-                        res = model.generate_content(filter_query).text.strip()
-                        if "true" not in res.lower(): continue
-                        try: relevance_score = int(res.split(",")[-1])
-                        except: relevance_score = 5
-
-                    all_news.append({
-                        "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
-                        "title_en": entry.title,
-                        "title_ko": natural_translate(entry.title),
-                        "summary_ko": natural_translate(BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300]),
-                        "img": get_rescue_thumbnail(entry),
-                        "source": f["name"], "category": cat,
-                        "date_obj": p_date, "date": p_date.strftime("%m/%d"), "link": entry.link,
-                        "score": relevance_score
-                    })
-                except: continue
+        if settings["category_active"].get(cat, True):
+            for f in feeds:
+                if f["active"]:
+                    active_feeds.append((cat, f))
     
+    total_feeds = len(active_feeds)
+    if total_feeds == 0: return []
+
+    # 2. 프로그레스 바 생성
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    processed_count = 0
+
+    for cat, f in active_feeds:
+        processed_count += 1
+        percent = int((processed_count / total_feeds) * 100)
+        status_text.caption(f"📡 {cat} - {f['name']} 센싱 중... ({percent}%)")
+        progress_bar.progress(processed_count / total_feeds)
+        
+        d = feedparser.parse(f["url"])
+        for entry in d.entries[:10]:
+            try:
+                p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+                if p_date < limit: continue
+                
+                relevance_score = 5
+                if model:
+                    filter_query = f"""
+                    [필터 기준] {settings['filter_prompt']}
+                    [추가 필터] {settings['additional_filter']}
+                    [필터 강도] {strength_desc[settings['filter_strength']-1]}
+                    [제목] {entry.title}
+                    결과를 '유효성(True/False),관련도점수(1-10)' 형식으로만 답해.
+                    """
+                    res = model.generate_content(filter_query).text.strip()
+                    if "true" not in res.lower(): continue
+                    try: relevance_score = int(res.split(",")[-1])
+                    except: relevance_score = 5
+
+                all_news.append({
+                    "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
+                    "title_en": entry.title,
+                    "title_ko": natural_translate(entry.title),
+                    "summary_ko": natural_translate(BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300]),
+                    "img": get_rescue_thumbnail(entry),
+                    "source": f["name"], "category": cat,
+                    "date_obj": p_date, "date": p_date.strftime("%m/%d"), "link": entry.link,
+                    "score": relevance_score
+                })
+            except: continue
+    
+    status_text.empty()
+    progress_bar.empty()
     all_news.sort(key=lambda x: x['date_obj'], reverse=True)
     return all_news
 
-# --- 5. 사이드바 (개편된 UI) ---
+# --- 5. 사이드바 ---
 with st.sidebar:
     st.title("🛡️ NOD Control")
     
-    # API 키 관리
     if "show_api_input" not in st.session_state: st.session_state.show_api_input = False
     current_key = st.session_state.settings.get("api_key", "")
     if current_key and not st.session_state.show_api_input:
@@ -206,7 +225,6 @@ with st.sidebar:
 
     st.divider()
     
-    # 1. 채널 그룹 On/Off 및 채널 추가
     st.subheader("🌐 Sensing Channels")
     for cat in list(st.session_state.settings["channels"].keys()):
         is_cat_on = st.toggle(f"{cat} 활성화", value=st.session_state.settings["category_active"].get(cat, True), key=f"tog_{cat}")
@@ -229,25 +247,26 @@ with st.sidebar:
 
     st.divider()
     
-    # 2. 고급 필터 설정
     with st.expander("⚙️ Advanced Setup", expanded=True):
         st.session_state.settings["filter_prompt"] = st.text_area("News Filter", value=st.session_state.settings["filter_prompt"])
         st.session_state.settings["additional_filter"] = st.text_area("Additional Filter", value=st.session_state.settings.get("additional_filter", ""), placeholder="예: '애플 비전 프로' 관련 가중치")
+        # 개선 사항: AI 분석 프롬프트 수정 기능 추가
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings.get("ai_prompt", ""), placeholder="분석 시 고려할 관점을 입력하세요.")
         st.session_state.settings["filter_strength"] = st.slider("Filter 강도 (1~5)", 1, 5, st.session_state.settings["filter_strength"])
         st.session_state.settings["max_articles"] = st.selectbox("표시 기사 개수", [10, 20, 30, 50], index=[10, 20, 30, 50].index(st.session_state.settings.get("max_articles", 20)))
         st.session_state.settings["sensing_period"] = st.slider("수집 기간", 1, 30, st.session_state.settings["sensing_period"])
 
     if st.button("🚀 Apply Settings", use_container_width=True):
         save_settings(st.session_state.settings)
-        st.cache_data.clear()
+        # 캐시 클리어를 위해 st.cache_data.clear()는 신중히 사용
         st.rerun()
 
 # --- 6. 메인 화면 ---
 st.title("🚀 Samsung NOD Strategy Hub")
+# 진행률 표시를 위해 fetch_sensing_data에서 st.cache_data를 제거하거나 수동 관리
 raw_data = fetch_sensing_data(st.session_state.settings)
 
 if raw_data:
-    # 3. 본문 내 소팅 및 필터링 UI
     st.divider()
     c1, c2, c3 = st.columns([2, 2, 2])
     with c1:
@@ -257,20 +276,16 @@ if raw_data:
     with c3:
         search_q = st.text_input("결과 내 검색", "")
 
-    # 필터링 적용
     filtered_data = [d for d in raw_data if d["category"] in cat_filter]
     if search_q:
         filtered_data = [d for d in filtered_data if search_q.lower() in d["title_ko"].lower() or search_q.lower() in d["title_en"].lower()]
     
-    # 정렬 적용
     if sort_mode == "최신순": filtered_data.sort(key=lambda x: x["date_obj"], reverse=True)
     elif sort_mode == "과거순": filtered_data.sort(key=lambda x: x["date_obj"])
     else: filtered_data.sort(key=lambda x: x["score"], reverse=True)
 
-    # 개수 제한
     display_data = filtered_data[:st.session_state.settings["max_articles"]]
 
-    # Top 6 화면 표시
     st.subheader("🌟 Strategic Top Picks")
     top_6 = display_data[:6]
     grid = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
@@ -292,7 +307,6 @@ if raw_data:
 
     st.divider()
 
-    # Sensing Stream 리스트 표시
     st.subheader("📋 Sensing Stream")
     for item in display_data[6:]:
         with st.container():
