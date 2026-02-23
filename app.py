@@ -9,8 +9,8 @@ import time
 from deep_translator import GoogleTranslator
 import requests
 
-# --- 1. 설정 저장 및 로드 (슬랙 설정 추가) ---
-SETTINGS_FILE = "nod_pro_settings_v3.json"
+# --- 1. 설정 저장 및 로드 로직 ---
+SETTINGS_FILE = "nod_master_settings.json"
 
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
@@ -23,14 +23,23 @@ def load_settings():
 def default_settings():
     return {
         "api_key": "",
-        "slack_webhook": "", # 슬랙 전송용 URL
+        "slack_webhook": "",
         "sensing_period": 14,
-        "filter_prompt": "차세대 경험 기획 및 하드웨어 혁신, AI UX 사례 위주",
-        "ai_analysis_prompt": "이 제품의 UX 변곡점을 분석하고, 우리 팀의 전략에 이식할 아이디어 2개를 제안하라.",
+        "ai_analysis_prompt": "이 제품/서비스의 UX 변곡점을 분석하고, 우리 팀의 차세대 디바이스 전략에 이식할 수 있는 구체적 아이디어 2개를 제안하라.",
         "channels": {
-            "글로벌": [{"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "active": True}],
-            "중국": [{"name": "36Kr", "url": "https://36kr.com/feed", "active": True}],
-            "일본": [{"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True}]
+            "글로벌 (Tech/Design)": [
+                {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "active": True},
+                {"name": "Wired", "url": "https://www.wired.com/feed/rss", "active": True},
+                {"name": "Yanko Design", "url": "https://www.yankodesign.com/feed/", "active": True}
+            ],
+            "중국 (AI/Hardware)": [
+                {"name": "36Kr", "url": "https://36kr.com/feed", "active": True},
+                {"name": "TechNode", "url": "https://technode.com/feed/", "active": True}
+            ],
+            "일본 (Innovation)": [
+                {"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True},
+                {"name": "ITmedia News", "url": "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml", "active": True}
+            ]
         }
     }
 
@@ -41,44 +50,68 @@ def save_settings(settings):
 if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 
-# --- 2. 슬랙 전송 함수 ---
+# --- 2. 썸네일 완벽 복구 로직 (Open Graph 하이브리드 방식) ---
+def get_robust_thumbnail(entry):
+    # 1단계: RSS 표준 태그 확인
+    if 'media_content' in entry: return entry.media_content[0]['url']
+    if 'media_thumbnail' in entry: return entry.media_thumbnail[0]['url']
+    
+    # 2단계: 웹 페이지 직접 방문하여 og:image 태그 추출 (The Verge 등 해결)
+    link = entry.get('link')
+    if link:
+        try:
+            res = requests.get(link, timeout=1.5)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                og_img = soup.find("meta", property="og:image")
+                if og_img and og_img.get("content"):
+                    return og_img["content"]
+        except: pass
+
+    # 3단계: 본문 내부 <img> 태그 확인
+    content_html = entry.get("summary", "") or entry.get("description", "")
+    soup_inner = BeautifulSoup(content_html, "html.parser")
+    img_tag = soup_inner.find("img")
+    if img_tag and img_tag.get("src"): return img_tag["src"]
+
+    # 4단계: 대체 이미지
+    return f"https://via.placeholder.com/600x400/1a73e8/ffffff?text=NOD+Sensing"
+
+# --- 3. 슬랙 전송 함수 ---
 def send_to_slack(title, analysis):
     webhook_url = st.session_state.settings.get("slack_webhook")
     if not webhook_url:
-        st.error("슬랙 웹훅 URL이 설정되지 않았습니다. 고급 설정에서 등록해 주세요.")
+        st.error("슬랙 웹훅 URL을 설정해 주세요.")
         return
-    
-    payload = {
-        "text": f"🚀 *NOD 프로젝트 신규 인사이트 공유*\n\n*대상:* {title}\n\n*분석 내용:*\n{analysis}"
-    }
+    payload = {"text": f"📢 *NOD 전략 인사이트 공유*\n\n*주제:* {title}\n\n*분석 리포트:*\n{analysis}"}
     try:
-        response = requests.post(webhook_url, json=payload)
-        if response.status_code == 200: st.toast("슬랙으로 성공적으로 전송되었습니다! ✈️")
-        else: st.error(f"슬랙 전송 실패: {response.text}")
+        requests.post(webhook_url, json=payload)
+        st.toast("슬랙으로 전송되었습니다! 🚀")
     except Exception as e:
-        st.error(f"오류 발생: {e}")
+        st.error(f"슬랙 전송 실패: {e}")
 
-# --- 3. UI 스타일 ---
+# --- 4. UI 스타일 정의 ---
 st.set_page_config(page_title="NOD Intelligence Hub", layout="wide")
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
     html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif; background-color: #f8f9fa; }
     .card { background: white; padding: 22px; border-radius: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef1f4; margin-bottom: 20px; }
-    .thumbnail { width: 100%; height: 180px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; }
-    .card-title { font-size: 1rem; font-weight: 700; height: 48px; overflow: hidden; }
+    .thumbnail { width: 100%; height: 190px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; }
+    .card-title { font-size: 1rem; font-weight: 700; height: 48px; overflow: hidden; color: #1a1c1e; }
+    .card-summary { font-size: 0.85rem; color: #515458; height: 60px; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 사이드바 (API 키 및 설정) ---
+# --- 5. 사이드바 (설정 관리) ---
 with st.sidebar:
     st.title("🛡️ NOD 전략 센터")
     
-    # API 키 처리 로직 강화
+    # API Key 인식 오류 해결: 세션 상태를 직접 확인하고 설정
     current_key = st.session_state.settings.get("api_key", "")
     if current_key:
         st.success("✅ AI 연결됨")
-        if st.button("Key 재입력"):
+        if st.button("Key 수정"):
             st.session_state.settings["api_key"] = ""
             save_settings(st.session_state.settings)
             st.rerun()
@@ -90,64 +123,85 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
+    st.subheader("🌐 채널 관리")
+    for cat, feeds in st.session_state.settings["channels"].items():
+        with st.expander(cat):
+            for f in feeds:
+                f["active"] = st.checkbox(f["name"], value=f["active"], key=f"ch_{f['name']}")
+
+    st.divider()
     with st.expander("⚙️ 고급 설정"):
         st.session_state.settings["slack_webhook"] = st.text_input("Slack Webhook URL", value=st.session_state.settings.get("slack_webhook", ""))
-        st.session_state.settings["ai_analysis_prompt"] = st.text_area("AI 분석 프롬프트", value=st.session_state.settings["ai_analysis_prompt"])
-        if st.button("설정 일괄 저장"):
+        st.session_state.settings["ai_analysis_prompt"] = st.text_area("분석 프롬프트", value=st.session_state.settings["ai_analysis_prompt"])
+        if st.button("일괄 저장"):
             save_settings(st.session_state.settings)
             st.toast("저장 완료!")
 
-# --- 5. AI 분석 함수 (키 인식 오류 원천 차단) ---
-def get_ai_analysis(item):
-    # 세션 상태에서 실시간으로 키를 가져옴
-    api_key = st.session_state.settings.get("api_key")
-    if not api_key:
-        return "⚠️ API Key가 인식되지 않았습니다. 사이드바에서 다시 등록해 주세요."
-    
-    try:
-        genai.configure(api_key=api_key)
-        # 모델 명칭 유연하게 대응
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        
-        prompt = f"""
-        당신은 차세대 경험 기획팀의 전략가입니다.
-        뉴스: {item['title']} - {item['summary']}
-        가이드: {st.session_state.settings['ai_analysis_prompt']}
-        모든 답변은 한국어로 전문적으로 작성하세요.
-        """
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"분석 중 오류 발생: {str(e)}"
-
-# --- 6. 뉴스 수집 및 출력 (기존 UI 유지) ---
+# --- 6. 뉴스 수집 및 메인 화면 ---
 @st.cache_data(ttl=3600)
-def fetch_data():
-    all_news = []
-    # (기존 이미지 추출 및 번역 로직 포함)
-    # ... (생략된 수집 로직은 이전과 동일하게 작동하며 썸네일 개선형을 유지함)
-    return all_news # 실제 코드에서는 이전 수집 로직을 여기에 통합
+def fetch_news():
+    results = []
+    limit = datetime.now() - timedelta(days=st.session_state.settings["sensing_period"])
+    translator = GoogleTranslator(source='auto', target='ko')
+
+    for cat, feeds in st.session_state.settings["channels"].items():
+        for f in feeds:
+            if not f["active"]: continue
+            d = feedparser.parse(f["url"])
+            for entry in d.entries[:7]:
+                try:
+                    p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+                    if p_date < limit: continue
+                    
+                    results.append({
+                        "title": translator.translate(entry.title),
+                        "summary": translator.translate(BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:150]),
+                        "img": get_robust_thumbnail(entry), # 하이브리드 로직
+                        "source": f["name"],
+                        "date": p_date.strftime("%m/%d"),
+                        "link": entry.link
+                    })
+                except: continue
+    results.sort(key=lambda x: x['date'], reverse=True)
+    return results
 
 st.title("🚀 NOD Intelligence Dashboard")
-# 예시 뉴스 데이터 (실제 데이터 수집 함수 연결)
-news_list = fetch_data()
+news_data = fetch_news()
 
-if news_list:
-    cols = st.columns(3)
-    for i, item in enumerate(news_list[:9]):
-        with cols[i % 3]:
-            st.markdown(f"""
-            <div class="card">
-                <img src="{item['img']}" class="thumbnail">
-                <div class="card-title">{item['title']}</div>
-                <div style="font-size:0.85rem; color:#555; margin-bottom:10px;">{item['summary'][:100]}...</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 분석 버튼 및 슬랙 전송 UI 통합
-            if st.button("🔍 전략 Deep-dive", key=f"dd_{i}"):
-                analysis_res = get_ai_analysis(item)
-                with st.expander("📝 분석 리포트", expanded=True):
-                    st.markdown(analysis_res)
-                    if st.button("📢 Slack으로 전송", key=f"sl_{i}"):
-                        send_to_slack(item['title'], analysis_res)
+# AI 모델 설정 (키 인식 오류 방지)
+def get_model():
+    api_key = st.session_state.settings.get("api_key")
+    if not api_key: return None
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel('gemini-1.5-flash-latest')
+
+model = get_model()
+
+if news_data:
+    rows = [news_data[i:i + 3] for i in range(0, len(news_data), 3)]
+    for row in rows:
+        cols = st.columns(3)
+        for i, item in enumerate(row):
+            with cols[i]:
+                st.markdown(f"""
+                <div class="card">
+                    <div style="font-size:0.75rem; color:#1a73e8; font-weight:700; margin-bottom:8px;">{item['source']} | {item['date']}</div>
+                    <img src="{item['img']}" class="thumbnail">
+                    <div class="card-title">{item['title']}</div>
+                    <div class="card-summary">{item['summary']}...</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("🔍 전략 Deep-dive", key=f"btn_{item['link'][-10:]}"):
+                    if model:
+                        with st.spinner("AI 분석 리포트 생성 중..."):
+                            prompt = f"{st.session_state.settings['ai_analysis_prompt']}\n\n내용: {item['title']} - {item['summary']}"
+                            res = model.generate_content(prompt)
+                            st.info(res.text)
+                            # 분석 완료 후 슬랙 전송 버튼 노출
+                            if st.button("📢 슬랙으로 공유하기", key=f"slack_{item['link'][-10:]}"):
+                                send_to_slack(item['title'], res.text)
+                    else:
+                        st.warning("사이드바에서 Gemini API Key를 먼저 등록해 주세요.")
+else:
+    st.info("뉴스를 수집 중이거나 조건에 맞는 데이터가 없습니다.")
