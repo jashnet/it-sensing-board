@@ -9,6 +9,7 @@ import time
 from deep_translator import GoogleTranslator
 import requests
 import hashlib
+import socket # 타임아웃 설정을 위해 추가
 
 # --- 1. 설정 및 기본값 ---
 SETTINGS_FILE = "nod_samsung_pro_v7.json"
@@ -99,7 +100,7 @@ def save_settings(settings):
 if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 
-# --- 2. 자연스러운 번역 및 지능형 스크린샷 엔진 ---
+# --- 2. 유틸리티 함수 ---
 def natural_translate(text):
     if not text: return ""
     try: return GoogleTranslator(source='auto', target='ko').translate(text)
@@ -118,20 +119,7 @@ def get_rescue_thumbnail(entry):
         except: pass
     return f"https://s.wordpress.com/mshots/v1/{link}?w=600" if link else "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80"
 
-# --- 3. UI 스타일 ---
-st.set_page_config(page_title="Samsung NOD Strategy Hub", layout="wide")
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
-    body { font-family: 'Noto Sans KR', sans-serif; background-color: #f4f7fa; }
-    .top-card { background: white; padding: 24px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 6px solid #034EA2; height: 100%; display: flex; flex-direction: column; }
-    .thumbnail { width: 100%; height: 190px; object-fit: cover; border-radius: 14px; margin-bottom: 12px; }
-    .title-ko { font-size: 1.1rem; font-weight: 700; color: #1a1c1e; line-height: 1.4; margin-bottom: 6px; }
-    .badge { background: #eef2ff; color: #034EA2; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; display: inline-block; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- 4. 데이터 엔진 ---
+# --- 3. 데이터 엔진 (에러 방어 로직 강화) ---
 def get_ai_model():
     try:
         genai.configure(api_key=st.session_state.settings["api_key"])
@@ -146,6 +134,10 @@ def fetch_sensing_data(settings):
     model = get_ai_model()
     strength_desc = ["매우 완화됨", "완화됨", "보통", "엄격함", "매우 엄격함"]
     
+    # 서버 연결 끊김 방지용 User-Agent
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    socket.setdefaulttimeout(10) # 10초 내 응답 없으면 다음으로
+
     active_feeds = []
     for cat, feeds in settings["channels"].items():
         if settings["category_active"].get(cat, True):
@@ -165,41 +157,59 @@ def fetch_sensing_data(settings):
         status_text.caption(f"📡 {cat} - {f['name']} 센싱 중... ({percent}%)")
         progress_bar.progress(processed_count / total_feeds)
         
-        d = feedparser.parse(f["url"])
-        for entry in d.entries[:10]:
-            try:
-                p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
-                if p_date < limit: continue
-                
-                relevance_score = 5
-                if model:
-                    filter_query = f"[제목] {entry.title}\n{settings['filter_prompt']}\n{settings['additional_filter']}\n강도: {strength_desc[settings['filter_strength']-1]}\nTrue/False,점수(1-10) 형식으로 답해."
-                    res = model.generate_content(filter_query).text.strip()
-                    if "true" not in res.lower(): continue
-                    try: relevance_score = int(res.split(",")[-1])
-                    except: relevance_score = 5
+        try:
+            # [수정 지점] agent를 설정하여 차단 방지 및 try-except로 Disconnected 대응
+            d = feedparser.parse(f["url"], agent=USER_AGENT)
+            
+            for entry in d.entries[:10]:
+                try:
+                    p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+                    if p_date < limit: continue
+                    
+                    relevance_score = 5
+                    if model:
+                        filter_query = f"[제목] {entry.title}\n{settings['filter_prompt']}\n{settings['additional_filter']}\n강도: {strength_desc[settings['filter_strength']-1]}\nTrue/False,점수(1-10) 형식으로 답해."
+                        res = model.generate_content(filter_query).text.strip()
+                        if "true" not in res.lower(): continue
+                        try: relevance_score = int(res.split(",")[-1])
+                        except: relevance_score = 5
 
-                all_news.append({
-                    "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
-                    "title_en": entry.title,
-                    "title_ko": natural_translate(entry.title),
-                    "summary_ko": natural_translate(BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300]),
-                    "img": get_rescue_thumbnail(entry),
-                    "source": f["name"], "category": cat,
-                    "date_obj": p_date, "date": p_date.strftime("%m/%d"), "link": entry.link,
-                    "score": relevance_score
-                })
-            except: continue
+                    all_news.append({
+                        "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
+                        "title_en": entry.title,
+                        "title_ko": natural_translate(entry.title),
+                        "summary_ko": natural_translate(BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300]),
+                        "img": get_rescue_thumbnail(entry),
+                        "source": f["name"], "category": cat,
+                        "date_obj": p_date, "date": p_date.strftime("%m/%d"), "link": entry.link,
+                        "score": relevance_score
+                    })
+                except: continue
+        except Exception as e:
+            # 특정 사이트 연결 실패 시 경고창 대신 로그만 남기고 다음으로 진행
+            print(f"Error fetching {f['name']}: {e}")
+            continue
     
     status_text.empty()
     progress_bar.empty()
     all_news.sort(key=lambda x: x['date_obj'], reverse=True)
     return all_news
 
-# --- 5. 사이드바 ---
+# --- (이후 메인 UI 및 사이드바 로직은 동일) ---
+# --- 4. UI 스타일 ---
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; background-color: #f4f7fa; }
+    .top-card { background: white; padding: 24px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 6px solid #034EA2; height: 100%; display: flex; flex-direction: column; }
+    .thumbnail { width: 100%; height: 190px; object-fit: cover; border-radius: 14px; margin-bottom: 12px; }
+    .title-ko { font-size: 1.1rem; font-weight: 700; color: #1a1c1e; line-height: 1.4; margin-bottom: 6px; }
+    .badge { background: #eef2ff; color: #034EA2; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; display: inline-block; }
+</style>
+""", unsafe_allow_html=True)
+
 with st.sidebar:
     st.title("🛡️ NOD Control")
-    
     if "show_api_input" not in st.session_state: st.session_state.show_api_input = False
     current_key = st.session_state.settings.get("api_key", "")
     if current_key and not st.session_state.show_api_input:
@@ -243,20 +253,17 @@ with st.sidebar:
         if "news_data" in st.session_state: del st.session_state.news_data
         st.rerun()
 
-# --- 6. 메인 화면 로직 (Session State 활용하여 재센싱 방지) ---
-st.title("🚀 Samsung NOD Strategy Hub")
-
+st.title("🚀 NGEPT NOD Sensing Dashboard")
 if "news_data" not in st.session_state:
     st.session_state.news_data = fetch_sensing_data(st.session_state.settings)
 
 raw_data = st.session_state.news_data
 
 if raw_data:
-    # 소팅/필터 UI
     c1, c2, c3 = st.columns([2, 2, 2])
     with c1: sort_mode = st.selectbox("정렬", ["최신순", "과거순", "AI 관련도순"])
     with c2: cat_filter = st.multiselect("카테고리", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
-    with c3: search_q = st.text_input("결색", "")
+    with c3: search_q = st.text_input("결과 내 검색", "")
 
     filtered = [d for d in raw_data if d["category"] in cat_filter]
     if search_q: filtered = [d for d in filtered if search_q.lower() in d["title_ko"].lower()]
@@ -266,7 +273,6 @@ if raw_data:
     
     display_data = filtered[:st.session_state.settings["max_articles"]]
 
-    # Top 6 화면 표시
     st.subheader("🌟 Strategic Top Picks")
     top_6 = display_data[:6]
     rows = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
@@ -279,8 +285,6 @@ if raw_data:
                     <img src="{item['img']}" class="thumbnail"><div class="title-ko">{item['title_ko']}</div>
                     <a href="{item['link']}" target="_blank" style="font-size:0.8rem; color:#034EA2;">🔗 원본 읽기</a>
                 </div>""", unsafe_allow_html=True)
-                
-                # 에러 방지된 Deep-dive 버튼
                 if st.button("🔍 Deep-dive", key=f"top_{item['id']}"):
                     model = get_ai_model()
                     if model:
@@ -304,4 +308,4 @@ if raw_data:
                     res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
                     st.success(res.text)
         st.markdown("---")
-else: st.info("조건에 맞는 뉴스가 없습니다. 사이드바 설정을 확인해 보세요.")
+else: st.info("조건에 맞는 뉴스가 없습니다. 설정을 변경하고 Apply 버튼을 눌러보세요.")
