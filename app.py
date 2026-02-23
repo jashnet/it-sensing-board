@@ -147,27 +147,48 @@ def fetch_news():
     results.sort(key=lambda x: x['date'], reverse=True)
     return results
 
-# --- 7. AI 분석 모델 호출 (에러 해결 핵심 로직) ---
+
+# --- 7. AI 분석 모델 호출 (에러를 원천 차단하는 지능형 탐색 로직) ---
 def get_ai_response(prompt):
     api_key = st.session_state.settings.get("api_key")
-    if not api_key: return "API Key가 없습니다."
+    if not api_key: 
+        return "❌ API Key가 인식되지 않았습니다. 사이드바에서 다시 등록해 주세요."
     
-    genai.configure(api_key=api_key)
-    
-    # NotFound 에러를 방지하기 위해 사용 가능한 모델 명칭을 순차적으로 시도합니다.
-    model_variants = ["models/gemini-1.5-flash", "gemini-1.5-flash"]
-    
-    for model_name in model_variants:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            if "not_found" in str(e).lower() or "404" in str(e):
-                continue # 다음 모델 이름으로 시도
-            return f"에러 발생: {str(e)}"
-    
-    return "지원되는 Gemini 모델을 찾을 수 없습니다. API 설정을 확인해주세요."
+    try:
+        # 1. API 키 설정
+        genai.configure(api_key=api_key)
+        
+        # 2. 현재 키로 사용 가능한 모델 목록을 실시간으로 가져옵니다.
+        # 이 방식은 모델 이름이 변경되어도 자동으로 찾아냅니다.
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # 3. 'flash' 모델을 우선적으로 찾고, 없으면 첫 번째 모델을 사용합니다.
+        target_model_name = None
+        for m_name in available_models:
+            if "1.5-flash" in m_name:
+                target_model_name = m_name
+                break
+        
+        if not target_model_name and available_models:
+            target_model_name = available_models[0] # 아무거나 가동 가능한 모델 선택
+            
+        if not target_model_name:
+            return "사용 가능한 Gemini 모델이 계정에 없습니다. API 권한을 확인해 주세요."
+
+        # 4. 분석 수행
+        model = genai.GenerativeModel(target_model_name)
+        response = model.generate_content(prompt)
+        return response.text
+
+    except Exception as e:
+        # 실제 구글 서버에서 보내는 에러 메시지를 노출하여 정확한 원인 파악
+        error_msg = str(e)
+        if "API_KEY_INVALID" in error_msg:
+            return "❌ 입력하신 API Key가 유효하지 않습니다. 다시 확인해 주세요."
+        elif "quota" in error_msg.lower():
+            return "❌ 사용량 한도(Quota)를 초과했습니다. 잠시 후 다시 시도해 주세요."
+        return f"⚠️ 기술적 에러 발생: {error_msg}\n(구글 라이브러리 버전이나 키 권한 문제일 수 있습니다.)"
+
 
 st.title("🚀 NOD Intelligence Dashboard")
 news_data = fetch_news()
