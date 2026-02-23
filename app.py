@@ -118,7 +118,6 @@ def get_rescue_thumbnail(entry):
         except: pass
     return f"https://s.wordpress.com/mshots/v1/{link}?w=600" if link else "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80"
 
-# [수정] 모델 호출 로직을 직접 지정하여 안정성 강화 (Deep-dive 에러 해결)
 def get_ai_model():
     api_key = st.session_state.settings.get("api_key", "").strip()
     if not api_key: return None
@@ -127,7 +126,7 @@ def get_ai_model():
         return genai.GenerativeModel('gemini-1.5-flash')
     except: return None
 
-# --- 3. 데이터 엔진 (진행률 및 에러 방어) ---
+# --- 3. [수정 완료] 데이터 엔진 (필터링 로직 고도화) ---
 def fetch_sensing_data(settings):
     all_news = []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
@@ -150,7 +149,7 @@ def fetch_sensing_data(settings):
     for cat, f in active_feeds:
         processed_count += 1
         percent = int((processed_count / len(active_feeds)) * 100)
-        status_text.caption(f"📡 {cat} - {f['name']} 센싱 중... ({percent}%)")
+        status_text.caption(f"📡 {cat} - {f['name']} 전략 센싱 중... ({percent}%)")
         progress_bar.progress(processed_count / len(active_feeds))
         
         try:
@@ -160,13 +159,40 @@ def fetch_sensing_data(settings):
                     p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
                     if p_date < limit: continue
                     
-                    relevance_score = 5
+                    relevance_score = 5 # 기본 점수
                     if model:
-                        filter_query = f"[제목] {entry.title}\n기준: {settings['filter_prompt']}\n추가 필터: {settings['additional_filter']}\nTrue/False,점수(1-10) 형식 답해."
-                        res = model.generate_content(filter_query).text.strip()
-                        if "true" not in res.lower(): continue
-                        try: relevance_score = int(res.split(",")[-1])
-                        except: relevance_score = 5
+                        # 팀장님이 요청하신 고도화된 전략 분석가 페르소나 주입
+                        filter_query = f"""
+                        귀하는 글로벌 빅테크 기업의 '차세대 경험기획팀' 전략 분석가입니다.
+                        향후 2~3년 내 상용화될 신규 제품/UX/기능 기획을 위해 아래 뉴스를 평가하세요.
+
+                        뉴스제목: {entry.title}
+                        요약내용: {entry.get("summary", "")[:200]}
+
+                        [필터링 핵심 기준]
+                        1. 기술적 도약: AI 발전, 새로운 HCI, 혁신적 폼팩터.
+                        2. 시장 파괴력: 스타트업의 도전적 제품, 에코시스템 판도 변화.
+                        3. 사용자 행태 변화: 사용 방식을 바꾸는 새로운 AI 서비스 경험.
+
+                        위 기준에 해당하며 미래 가치가 있다면 'True', 아니면 'False'라고 답하세요.
+                        반드시 'True, 관련점수(1-10)' 형식으로 짧게 답변하세요. 
+                        조금이라도 영감을 줄 수 있다면 True를 권장합니다.
+                        """
+                        try:
+                            response = model.generate_content(filter_query)
+                            res_text = response.text.strip().lower()
+                            
+                            # [로직 보완] 형식이 어긋나도 'true'만 포함되어 있으면 통과
+                            if "true" not in res_text:
+                                continue
+                            
+                            # 숫자만 추출하여 점수 계산
+                            try:
+                                relevance_score = int(''.join(filter(str.isdigit, res_text.split(",")[-1])))
+                            except:
+                                relevance_score = 5
+                        except:
+                            continue
 
                     all_news.append({
                         "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
@@ -209,13 +235,11 @@ st.markdown("""
 with st.sidebar:
     st.title("🛡️ NOD Controller")
     if "show_api" not in st.session_state: st.session_state.show_api = False
-    
-    current_api = st.session_state.settings.get("api_key", DEFAULT_API_KEY)
-    if current_api and not st.session_state.show_api:
+    if st.session_state.settings["api_key"] and not st.session_state.show_api:
         st.success("✅ AI 가동 중")
         if st.button("키 수정"): st.session_state.show_api = True; st.rerun()
     else:
-        new_key = st.text_input("Gemini API Key", value=current_api, type="password")
+        new_key = st.text_input("Gemini API Key", value=st.session_state.settings["api_key"], type="password")
         if st.button("저장 및 적용"):
             st.session_state.settings["api_key"] = new_key; st.session_state.show_api = False; save_settings(st.session_state.settings); st.rerun()
 
@@ -230,7 +254,6 @@ with st.sidebar:
 
     st.divider()
     with st.expander("⚙️ 고급 설정", expanded=True):
-        # [수정] 수집 날짜 조절 슬라이더 추가 (1-30일)
         st.session_state.settings["sensing_period"] = st.slider("수집 날짜 범위 (최근 N일)", 1, 30, st.session_state.settings.get("sensing_period", 7))
         st.session_state.settings["filter_prompt"] = st.text_area("News Filter", value=st.session_state.settings["filter_prompt"])
         st.session_state.settings["additional_filter"] = st.text_area("Additional Filter", value=st.session_state.settings.get("additional_filter", ""))
@@ -252,7 +275,6 @@ if "news_data" not in st.session_state:
 raw_data = st.session_state.news_data
 
 if raw_data:
-    # 🌟 Top Picks Section (고정 6개)
     st.subheader("🌟 Strategic Top Picks")
     top_6 = raw_data[:6]
     rows = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
@@ -283,9 +305,7 @@ if raw_data:
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.divider()
 
-    # 📋 Sensing Stream Section (필터/소팅 적용)
     st.subheader("📋 Sensing Stream")
-    
     with st.container():
         c1, c2, c3 = st.columns([2, 2, 2])
         with c1: sort_val = st.selectbox("📅 정렬", ["최신순", "과거순", "AI 관련도순"])
