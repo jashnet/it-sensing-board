@@ -246,7 +246,7 @@ with st.sidebar:
         st.rerun()
 
 # --- 6. 메인 렌더링 ---
-st.markdown("""<div class="header-container"><div class="header-title">Samsung NOD Strategy Hub</div><div>Future Experience Sensing & Opportunity Discovery</div></div>""", unsafe_allow_html=True)
+st.markdown("""<div class="header-container"><div class="header-title">NGEPT NOD Sensing Dashboard</div><div>Future Experience Sensing & Opportunity Discovery</div></div>""", unsafe_allow_html=True)
 
 if "news_data" not in st.session_state:
     st.session_state.news_data = fetch_sensing_data(st.session_state.settings)
