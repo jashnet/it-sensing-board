@@ -4,3 +4,4 @@ google-generativeai>=0.8.0
 beautifulsoup4
 pandas
 deep-translator
+requests
