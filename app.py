@@ -99,7 +99,7 @@ def save_settings(settings):
 if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 
-# --- 2. 자연스러운 번역 및 지능형 스크린샷 썸네일 엔진 ---
+# --- 2. 자연스러운 번역 및 지능형 스크린샷 엔진 ---
 def natural_translate(text):
     if not text: return ""
     try: return GoogleTranslator(source='auto', target='ko').translate(text)
@@ -119,7 +119,7 @@ def get_rescue_thumbnail(entry):
     return f"https://s.wordpress.com/mshots/v1/{link}?w=600" if link else "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80"
 
 # --- 3. UI 스타일 ---
-st.set_page_config(page_title="Samsung NOD Center v7", layout="wide")
+st.set_page_config(page_title="Samsung NOD Strategy Hub", layout="wide")
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
@@ -140,26 +140,21 @@ def get_ai_model():
         return genai.GenerativeModel(target)
     except: return None
 
-# 캐시 비활성화 또는 ttl 조정을 고려 (진행률 표시를 위해)
 def fetch_sensing_data(settings):
     all_news = []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     model = get_ai_model()
-    
     strength_desc = ["매우 완화됨", "완화됨", "보통", "엄격함", "매우 엄격함"]
     
-    # 1. 진행률 계산을 위한 활성 피드 수 확인
     active_feeds = []
     for cat, feeds in settings["channels"].items():
         if settings["category_active"].get(cat, True):
             for f in feeds:
-                if f["active"]:
-                    active_feeds.append((cat, f))
+                if f["active"]: active_feeds.append((cat, f))
     
     total_feeds = len(active_feeds)
     if total_feeds == 0: return []
 
-    # 2. 프로그레스 바 생성
     progress_bar = st.progress(0)
     status_text = st.empty()
     processed_count = 0
@@ -178,13 +173,7 @@ def fetch_sensing_data(settings):
                 
                 relevance_score = 5
                 if model:
-                    filter_query = f"""
-                    [필터 기준] {settings['filter_prompt']}
-                    [추가 필터] {settings['additional_filter']}
-                    [필터 강도] {strength_desc[settings['filter_strength']-1]}
-                    [제목] {entry.title}
-                    결과를 '유효성(True/False),관련도점수(1-10)' 형식으로만 답해.
-                    """
+                    filter_query = f"[제목] {entry.title}\n{settings['filter_prompt']}\n{settings['additional_filter']}\n강도: {strength_desc[settings['filter_strength']-1]}\nTrue/False,점수(1-10) 형식으로 답해."
                     res = model.generate_content(filter_query).text.strip()
                     if "true" not in res.lower(): continue
                     try: relevance_score = int(res.split(",")[-1])
@@ -224,21 +213,17 @@ with st.sidebar:
             save_settings(st.session_state.settings); st.rerun()
 
     st.divider()
-    
     st.subheader("🌐 Sensing Channels")
     for cat in list(st.session_state.settings["channels"].keys()):
         is_cat_on = st.toggle(f"{cat} 활성화", value=st.session_state.settings["category_active"].get(cat, True), key=f"tog_{cat}")
         st.session_state.settings["category_active"][cat] = is_cat_on
-        
         if is_cat_on:
-            with st.expander(f"{cat} 상세 관리"):
+            with st.expander(f"{cat} 관리"):
                 for f in st.session_state.settings["channels"][cat]:
                     f["active"] = st.checkbox(f["name"], value=f["active"], key=f"ch_{f['name']}")
-                
-                st.markdown("---")
                 st.caption("➕ 새 채널 추가")
                 with st.form(key=f"add_{cat}", clear_on_submit=True):
-                    n_name = st.text_input("채널 이름")
+                    n_name = st.text_input("이름")
                     n_url = st.text_input("RSS URL")
                     if st.form_submit_button("추가"):
                         if n_name and n_url:
@@ -246,81 +231,77 @@ with st.sidebar:
                             save_settings(st.session_state.settings); st.rerun()
 
     st.divider()
-    
     with st.expander("⚙️ Advanced Setup", expanded=True):
         st.session_state.settings["filter_prompt"] = st.text_area("News Filter", value=st.session_state.settings["filter_prompt"])
-        st.session_state.settings["additional_filter"] = st.text_area("Additional Filter", value=st.session_state.settings.get("additional_filter", ""), placeholder="예: '애플 비전 프로' 관련 가중치")
-        # 개선 사항: AI 분석 프롬프트 수정 기능 추가
-        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings.get("ai_prompt", ""), placeholder="분석 시 고려할 관점을 입력하세요.")
-        st.session_state.settings["filter_strength"] = st.slider("Filter 강도 (1~5)", 1, 5, st.session_state.settings["filter_strength"])
-        st.session_state.settings["max_articles"] = st.selectbox("표시 기사 개수", [10, 20, 30, 50], index=[10, 20, 30, 50].index(st.session_state.settings.get("max_articles", 20)))
-        st.session_state.settings["sensing_period"] = st.slider("수집 기간", 1, 30, st.session_state.settings["sensing_period"])
+        st.session_state.settings["additional_filter"] = st.text_area("Additional Filter", value=st.session_state.settings.get("additional_filter", ""))
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings.get("ai_prompt", ""))
+        st.session_state.settings["filter_strength"] = st.slider("Filter 강도", 1, 5, st.session_state.settings["filter_strength"])
+        st.session_state.settings["max_articles"] = st.selectbox("기사 개수", [10, 20, 30, 50], index=[10, 20, 30, 50].index(st.session_state.settings.get("max_articles", 20)))
 
-    if st.button("🚀 Apply Settings", use_container_width=True):
+    if st.button("🚀 Apply & Sensing Start", use_container_width=True):
         save_settings(st.session_state.settings)
-        # 캐시 클리어를 위해 st.cache_data.clear()는 신중히 사용
+        if "news_data" in st.session_state: del st.session_state.news_data
         st.rerun()
 
-# --- 6. 메인 화면 ---
+# --- 6. 메인 화면 로직 (Session State 활용하여 재센싱 방지) ---
 st.title("🚀 Samsung NOD Strategy Hub")
-# 진행률 표시를 위해 fetch_sensing_data에서 st.cache_data를 제거하거나 수동 관리
-raw_data = fetch_sensing_data(st.session_state.settings)
+
+if "news_data" not in st.session_state:
+    st.session_state.news_data = fetch_sensing_data(st.session_state.settings)
+
+raw_data = st.session_state.news_data
 
 if raw_data:
-    st.divider()
+    # 소팅/필터 UI
     c1, c2, c3 = st.columns([2, 2, 2])
-    with c1:
-        sort_mode = st.selectbox("정렬 방식", ["최신순", "과거순", "AI 관련도 높은 순"])
-    with c2:
-        cat_filter = st.multiselect("카테고리 필터", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
-    with c3:
-        search_q = st.text_input("결과 내 검색", "")
+    with c1: sort_mode = st.selectbox("정렬", ["최신순", "과거순", "AI 관련도순"])
+    with c2: cat_filter = st.multiselect("카테고리", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
+    with c3: search_q = st.text_input("결색", "")
 
-    filtered_data = [d for d in raw_data if d["category"] in cat_filter]
-    if search_q:
-        filtered_data = [d for d in filtered_data if search_q.lower() in d["title_ko"].lower() or search_q.lower() in d["title_en"].lower()]
+    filtered = [d for d in raw_data if d["category"] in cat_filter]
+    if search_q: filtered = [d for d in filtered if search_q.lower() in d["title_ko"].lower()]
+    if sort_mode == "최신순": filtered.sort(key=lambda x: x["date_obj"], reverse=True)
+    elif sort_mode == "과거순": filtered.sort(key=lambda x: x["date_obj"])
+    else: filtered.sort(key=lambda x: x["score"], reverse=True)
     
-    if sort_mode == "최신순": filtered_data.sort(key=lambda x: x["date_obj"], reverse=True)
-    elif sort_mode == "과거순": filtered_data.sort(key=lambda x: x["date_obj"])
-    else: filtered_data.sort(key=lambda x: x["score"], reverse=True)
+    display_data = filtered[:st.session_state.settings["max_articles"]]
 
-    display_data = filtered_data[:st.session_state.settings["max_articles"]]
-
+    # Top 6 화면 표시
     st.subheader("🌟 Strategic Top Picks")
     top_6 = display_data[:6]
-    grid = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
-    for row in grid:
+    rows = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
+    for row in rows:
         cols = st.columns(3)
         for j, item in enumerate(row):
             with cols[j]:
-                st.markdown(f"""
-                <div class="top-card">
+                st.markdown(f"""<div class="top-card">
                     <div class="badge">{item['source']} | {item['date']}</div>
-                    <img src="{item['img']}" class="thumbnail">
-                    <div class="title-ko">{item['title_ko']}</div>
-                    <div style="font-size:0.85rem; color:#555; height:60px; overflow:hidden;">{item['summary_ko']}...</div>
-                    <a href="{item['link']}" target="_blank" style="font-size:0.8rem; color:#034EA2; text-decoration:none; margin-top:auto;">🔗 원본 기사 읽기</a>
-                </div>
-                """, unsafe_allow_html=True)
+                    <img src="{item['img']}" class="thumbnail"><div class="title-ko">{item['title_ko']}</div>
+                    <a href="{item['link']}" target="_blank" style="font-size:0.8rem; color:#034EA2;">🔗 원본 읽기</a>
+                </div>""", unsafe_allow_html=True)
+                
+                # 에러 방지된 Deep-dive 버튼
                 if st.button("🔍 Deep-dive", key=f"top_{item['id']}"):
-                    st.info(get_ai_model().generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}").text)
+                    model = get_ai_model()
+                    if model:
+                        with st.spinner("Samsung 전략 분석 중..."):
+                            try:
+                                res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
+                                st.info(res.text)
+                            except Exception as e: st.error(f"분석 오류: {e}")
+                    else: st.error("API Key를 확인해주세요.")
 
     st.divider()
-
     st.subheader("📋 Sensing Stream")
     for item in display_data[6:]:
-        with st.container():
-            col_img, col_txt = st.columns([1, 4])
-            with col_img: st.image(item['img'], use_container_width=True)
-            with col_txt:
-                st.markdown(f"""
-                <div class="badge">{item['category']} | {item['source']} | {item['date']}</div>
-                <div class="title-ko">{item['title_ko']}</div>
-                <div style="font-size:0.85rem;">{item['summary_ko'][:200]}...</div>
-                <a href="{item['link']}" target="_blank" style="font-size:0.8rem; color:#034EA2;">🔗 원본 기사 보기</a>
-                """, unsafe_allow_html=True)
-                if st.button("Quick Analysis", key=f"list_{item['id']}"):
-                    st.success(get_ai_model().generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}").text)
-            st.markdown("---")
-else:
-    st.info("조건에 맞는 혁신 뉴스가 없습니다. 설정을 변경하고 Apply 버튼을 눌러보세요.")
+        col_img, col_txt = st.columns([1, 4])
+        with col_img: st.image(item['img'], use_container_width=True)
+        with col_txt:
+            st.markdown(f"**{item['title_ko']}**")
+            if st.button("Quick Analysis", key=f"list_{item['id']}"):
+                model = get_ai_model()
+                if model:
+                    res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
+                    st.success(res.text)
+        st.markdown("---")
+else: st.info("조건에 맞는 뉴스가 없습니다. 사이드바 설정을 확인해 보세요.")
