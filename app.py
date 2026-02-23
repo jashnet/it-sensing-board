@@ -118,15 +118,19 @@ def get_rescue_thumbnail(entry):
         except: pass
     return f"https://s.wordpress.com/mshots/v1/{link}?w=600" if link else "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80"
 
+# [수정 사항] 모델 호출 로직을 직접 지정하여 안정성 강화
 def get_ai_model():
     api_key = st.session_state.settings.get("api_key", "").strip()
-    if not api_key: return None
+    if not api_key:
+        return None
     try:
         genai.configure(api_key=api_key)
+        # 1.5 Flash 모델 직접 호출 (목록 조회 단계 생략으로 에러 방지)
         return genai.GenerativeModel('gemini-1.5-flash')
-    except: return None
+    except:
+        return None
 
-# --- 3. [수정 완료] 데이터 엔진 (필터링 로직 고도화) ---
+# --- 3. 데이터 엔진 (진행률 및 에러 방어) ---
 def fetch_sensing_data(settings):
     all_news = []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
@@ -149,7 +153,7 @@ def fetch_sensing_data(settings):
     for cat, f in active_feeds:
         processed_count += 1
         percent = int((processed_count / len(active_feeds)) * 100)
-        status_text.caption(f"📡 {cat} - {f['name']} 전략 센싱 중... ({percent}%)")
+        status_text.caption(f"📡 {cat} - {f['name']} 센싱 중... ({percent}%)")
         progress_bar.progress(processed_count / len(active_feeds))
         
         try:
@@ -159,40 +163,13 @@ def fetch_sensing_data(settings):
                     p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
                     if p_date < limit: continue
                     
-                    relevance_score = 5 # 기본 점수
+                    relevance_score = 5
                     if model:
-                        # 팀장님이 요청하신 고도화된 전략 분석가 페르소나 주입
-                        filter_query = f"""
-                        귀하는 글로벌 빅테크 기업의 '차세대 경험기획팀' 전략 분석가입니다.
-                        향후 2~3년 내 상용화될 신규 제품/UX/기능 기획을 위해 아래 뉴스를 평가하세요.
-
-                        뉴스제목: {entry.title}
-                        요약내용: {entry.get("summary", "")[:200]}
-
-                        [필터링 핵심 기준]
-                        1. 기술적 도약: AI 발전, 새로운 HCI, 혁신적 폼팩터.
-                        2. 시장 파괴력: 스타트업의 도전적 제품, 에코시스템 판도 변화.
-                        3. 사용자 행태 변화: 사용 방식을 바꾸는 새로운 AI 서비스 경험.
-
-                        위 기준에 해당하며 미래 가치가 있다면 'True', 아니면 'False'라고 답하세요.
-                        반드시 'True, 관련점수(1-10)' 형식으로 짧게 답변하세요. 
-                        조금이라도 영감을 줄 수 있다면 True를 권장합니다.
-                        """
-                        try:
-                            response = model.generate_content(filter_query)
-                            res_text = response.text.strip().lower()
-                            
-                            # [로직 보완] 형식이 어긋나도 'true'만 포함되어 있으면 통과
-                            if "true" not in res_text:
-                                continue
-                            
-                            # 숫자만 추출하여 점수 계산
-                            try:
-                                relevance_score = int(''.join(filter(str.isdigit, res_text.split(",")[-1])))
-                            except:
-                                relevance_score = 5
-                        except:
-                            continue
+                        filter_query = f"[제목] {entry.title}\n기준: {settings['filter_prompt']}\n추가 필터: {settings['additional_filter']}\nTrue/False,점수(1-10) 형식 답해."
+                        res = model.generate_content(filter_query).text.strip()
+                        if "true" not in res.lower(): continue
+                        try: relevance_score = int(res.split(",")[-1])
+                        except: relevance_score = 5
 
                     all_news.append({
                         "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
@@ -213,7 +190,7 @@ def fetch_sensing_data(settings):
     return all_news
 
 # --- 4. 모던 UI 스타일 ---
-st.set_page_config(page_title="Samsung NOD Center v8.2", layout="wide")
+st.set_page_config(page_title="NOD Strategy Hub v8.1", layout="wide")
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+KR:wght@300;400;700&display=swap');
@@ -235,13 +212,22 @@ st.markdown("""
 with st.sidebar:
     st.title("🛡️ NOD Controller")
     if "show_api" not in st.session_state: st.session_state.show_api = False
-    if st.session_state.settings["api_key"] and not st.session_state.show_api:
+    
+    # [수정] 키가 있어도 실시간 반영을 위해 입력칸 표시 로직 정교화
+    api_val = st.session_state.settings.get("api_key", DEFAULT_API_KEY)
+    
+    if api_val and not st.session_state.show_api:
         st.success("✅ AI 가동 중")
-        if st.button("키 수정"): st.session_state.show_api = True; st.rerun()
+        if st.button("키 수정"):
+            st.session_state.show_api = True
+            st.rerun()
     else:
-        new_key = st.text_input("Gemini API Key", value=st.session_state.settings["api_key"], type="password")
+        new_key = st.text_input("Gemini API Key", value=api_val, type="password")
         if st.button("저장 및 적용"):
-            st.session_state.settings["api_key"] = new_key; st.session_state.show_api = False; save_settings(st.session_state.settings); st.rerun()
+            st.session_state.settings["api_key"] = new_key
+            st.session_state.show_api = False
+            save_settings(st.session_state.settings)
+            st.rerun()
 
     st.divider()
     st.subheader("🌐 채널 그룹")
@@ -254,10 +240,9 @@ with st.sidebar:
 
     st.divider()
     with st.expander("⚙️ 고급 설정", expanded=True):
-        st.session_state.settings["sensing_period"] = st.slider("수집 날짜 범위 (최근 N일)", 1, 30, st.session_state.settings.get("sensing_period", 7))
         st.session_state.settings["filter_prompt"] = st.text_area("News Filter", value=st.session_state.settings["filter_prompt"])
         st.session_state.settings["additional_filter"] = st.text_area("Additional Filter", value=st.session_state.settings.get("additional_filter", ""))
-        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings.get("ai_prompt", ""))
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings["ai_prompt"])
         st.session_state.settings["filter_strength"] = st.slider("Filter 강도", 1, 5, st.session_state.settings["filter_strength"])
         st.session_state.settings["max_articles"] = st.selectbox("기사 개수", [10, 20, 30, 50], index=1)
 
@@ -267,14 +252,16 @@ with st.sidebar:
         st.rerun()
 
 # --- 6. 메인 렌더링 ---
-st.markdown("""<div class="header-container"><div class="header-title">NGEPT NOD Sensing Dashboard</div><div>Future Experience Sensing & Opportunity Discovery</div></div>""", unsafe_allow_html=True)
+st.markdown("""<div class="header-container"><div class="header-title">Samsung NOD Strategy Hub</div><div>Future Experience Sensing & Opportunity Discovery</div></div>""", unsafe_allow_html=True)
 
+# 재센싱 방지 로직 (st.session_state 활용)
 if "news_data" not in st.session_state:
     st.session_state.news_data = fetch_sensing_data(st.session_state.settings)
 
 raw_data = st.session_state.news_data
 
 if raw_data:
+    # 🌟 Top Picks Section (고정 6개)
     st.subheader("🌟 Strategic Top Picks")
     top_6 = raw_data[:6]
     rows = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
@@ -292,6 +279,8 @@ if raw_data:
                     <a href="{item['link']}" target="_blank" class="link-btn">🔗 원본 기사 읽기</a>
                 </div>
                 """, unsafe_allow_html=True)
+                
+                # [수정 지점] 딥다이브 버튼 에러 수정
                 if st.button("🔍 Deep-dive", key=f"dd_{item['id']}"):
                     model = get_ai_model()
                     if model:
@@ -299,13 +288,17 @@ if raw_data:
                             try:
                                 res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
                                 st.info(res.text)
-                            except Exception as e: st.error(f"분석 오류: {e}")
-                    else: st.error("API Key 확인 필요")
+                            except Exception as e:
+                                st.error(f"분석 오류: {e}")
+                    else:
+                        st.error("API 키를 인식하지 못했습니다. 사이드바 설정을 확인해 주세요.")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.divider()
 
+    # 📋 Sensing Stream Section (필터/소팅 적용)
     st.subheader("📋 Sensing Stream")
+    
     with st.container():
         c1, c2, c3 = st.columns([2, 2, 2])
         with c1: sort_val = st.selectbox("📅 정렬", ["최신순", "과거순", "AI 관련도순"])
@@ -314,6 +307,7 @@ if raw_data:
 
     stream_data = [d for d in raw_data[6:] if d["category"] in cat_val]
     if search_val: stream_data = [d for d in stream_data if search_val.lower() in d["title_ko"].lower()]
+    
     if sort_val == "최신순": stream_data.sort(key=lambda x: x["date_obj"], reverse=True)
     elif sort_val == "과거순": stream_data.sort(key=lambda x: x["date_obj"])
     else: stream_data.sort(key=lambda x: x["score"], reverse=True)
@@ -334,7 +328,11 @@ if raw_data:
                 """, unsafe_allow_html=True)
                 if st.button("Quick Analysis", key=f"qa_{item['id']}"):
                     model = get_ai_model()
-                    if model: st.success(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}").text)
+                    if model:
+                        res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
+                        st.success(res.text)
+                    else:
+                        st.error("API 키 오류")
             st.markdown("<hr style='border-top: 1px solid #edf2f7;'>", unsafe_allow_html=True)
 else:
     st.info("조건에 맞는 뉴스가 없습니다. 설정을 변경하고 Apply 버튼을 눌러보세요.")
