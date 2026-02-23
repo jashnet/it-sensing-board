@@ -113,4 +113,91 @@ with st.sidebar:
         
         st.markdown("### 📅 수집 환경")
         st.session_state.settings["slack_webhook"] = st.text_input("Slack Webhook URL", value=st.session_state.settings.get("slack_webhook", ""))
-        st.session_state.settings["sensing_period"] = st.slider("수집 기간(일)", 1, 30, st.session_state.settings["
+        st.session_state.settings["sensing_period"] = st.slider("수집 기간(일)", 1, 30, st.session_state.settings["sensing_period"])
+        
+        if st.button("모든 설정 일괄 저장"):
+            save_settings(st.session_state.settings)
+            st.toast("전략 기준이 저장되었습니다! 💾")
+
+# --- 5. 뉴스 데이터 수집 및 AI 필터링 ---
+@st.cache_data(ttl=3600)
+def fetch_and_filter():
+    results = []
+    limit = datetime.now() - timedelta(days=st.session_state.settings["sensing_period"])
+    translator = GoogleTranslator(source='auto', target='ko')
+    
+    # 1단계: 전체 뉴스 수집
+    temp_list = []
+    for cat, feeds in st.session_state.settings["channels"].items():
+        for f in feeds:
+            if not f.get("active"): continue
+            d = feedparser.parse(f["url"])
+            for entry in d.entries[:10]:
+                try:
+                    p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+                    if p_date < limit: continue
+                    temp_list.append({
+                        "title_en": entry.title,
+                        "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300],
+                        "link": entry.link, "source": f["name"], "date": p_date.strftime("%m/%d"),
+                        "raw_entry": entry
+                    })
+                except: continue
+
+    # 2단계: AI 모델 로드 (필터링용)
+    model = get_ai_model()
+    st.write(f"🔄 AI가 {len(temp_list)}개의 뉴스를 전략적 가치로 선별 중...")
+    
+    # 3단계: 필터링 및 번역
+    for item in temp_list:
+        if model:
+            # 필터 프롬프트를 사용하여 노출 여부 결정
+            filter_check = model.generate_content(f"기준: {st.session_state.settings['filter_prompt']}\n\n뉴스 제목: {item['title_en']}\n위 기준에 부합하면 'Yes', 아니면 'No'라고만 답해.")
+            if "yes" not in filter_check.text.lower(): continue
+
+        # 통과된 뉴스만 번역 및 이미지 추출
+        results.append({
+            "title": translator.translate(item['title_en']),
+            "summary": translator.translate(item['summary_en'][:150]),
+            "img": get_robust_thumbnail(item['raw_entry']),
+            "source": item['source'], "date": item['date'], "link": item['link']
+        })
+    return results
+
+# --- 6. 메인 화면 ---
+st.title("🚀 NOD Intelligence Hub")
+news_data = fetch_and_filter()
+
+model = get_ai_model()
+
+if news_data:
+    rows = [news_data[i:i + 3] for i in range(0, len(news_data), 3)]
+    for row in rows:
+        cols = st.columns(3)
+        for j, item in enumerate(row):
+            with cols[j]:
+                st.markdown(f"""
+                <div class="card">
+                    <div class="badge">{item['source']} | {item['date']}</div>
+                    <img src="{item['img']}" class="thumbnail">
+                    <div class="card-title">{item['title']}</div>
+                    <div style="font-size:0.85rem; color:#515458; height:60px; overflow:hidden;">{item['summary']}...</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("🔍 전략 Deep-dive", key=f"btn_{item['link'][-15:]}"):
+                    if model:
+                        with st.spinner("분석 중..."):
+                            # 분석 프롬프트를 사용하여 리포트 생성
+                            prompt = f"{st.session_state.settings['ai_analysis_prompt']}\n\n대상: {item['title']} - {item['summary']}"
+                            res = model.generate_content(prompt)
+                            st.info(res.text)
+                            
+                            # 슬랙 전송 (고급 설정에 URL 있을 때만)
+                            if st.session_state.settings.get("slack_webhook"):
+                                if st.button("📢 슬랙 공유", key=f"sl_{item['link'][-15:]}"):
+                                    requests.post(st.session_state.settings["slack_webhook"], json={"text": f"*NOD 인사이트:* {item['title']}\n{res.text}"})
+                                    st.toast("슬랙 전송 완료!")
+                    else: st.warning("키 등록이 필요합니다.")
+else:
+    st.info("현재 필터 기준에 맞는 혁신적인 뉴스가 없습니다. '고급 설정'에서 필터 프롬프트를 조정해 보세요.")
