@@ -9,7 +9,7 @@ import time
 from deep_translator import GoogleTranslator
 import requests
 
-# --- 1. 설정 저장 및 로드 로직 ---
+# --- 1. 설정 저장 및 로드 ---
 SETTINGS_FILE = "nod_master_settings.json"
 
 def load_settings():
@@ -50,13 +50,9 @@ def save_settings(settings):
 if "settings" not in st.session_state:
     st.session_state.settings = load_settings()
 
-# --- 2. 썸네일 완벽 복구 로직 (Open Graph 하이브리드 방식) ---
+# --- 2. 썸네일 완벽 복구 (The Verge 등 메타데이터 대응) ---
 def get_robust_thumbnail(entry):
-    # 1단계: RSS 표준 태그 확인
     if 'media_content' in entry: return entry.media_content[0]['url']
-    if 'media_thumbnail' in entry: return entry.media_thumbnail[0]['url']
-    
-    # 2단계: 웹 페이지 직접 방문하여 og:image 태그 추출 (The Verge 등 해결)
     link = entry.get('link')
     if link:
         try:
@@ -64,31 +60,19 @@ def get_robust_thumbnail(entry):
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, 'html.parser')
                 og_img = soup.find("meta", property="og:image")
-                if og_img and og_img.get("content"):
-                    return og_img["content"]
+                if og_img: return og_img["content"]
         except: pass
-
-    # 3단계: 본문 내부 <img> 태그 확인
-    content_html = entry.get("summary", "") or entry.get("description", "")
-    soup_inner = BeautifulSoup(content_html, "html.parser")
-    img_tag = soup_inner.find("img")
-    if img_tag and img_tag.get("src"): return img_tag["src"]
-
-    # 4단계: 대체 이미지
     return f"https://via.placeholder.com/600x400/1a73e8/ffffff?text=NOD+Sensing"
 
 # --- 3. 슬랙 전송 함수 ---
 def send_to_slack(title, analysis):
-    webhook_url = st.session_state.settings.get("slack_webhook")
-    if not webhook_url:
+    url = st.session_state.settings.get("slack_webhook")
+    if not url:
         st.error("슬랙 웹훅 URL을 설정해 주세요.")
         return
-    payload = {"text": f"📢 *NOD 전략 인사이트 공유*\n\n*주제:* {title}\n\n*분석 리포트:*\n{analysis}"}
-    try:
-        requests.post(webhook_url, json=payload)
-        st.toast("슬랙으로 전송되었습니다! 🚀")
-    except Exception as e:
-        st.error(f"슬랙 전송 실패: {e}")
+    payload = {"text": f"📢 *NOD 인사이트 공유*\n\n*주제:* {title}\n\n*분석 리포트:*\n{analysis}"}
+    requests.post(url, json=payload)
+    st.toast("슬랙 전송 완료! 🚀")
 
 # --- 4. UI 스타일 정의 ---
 st.set_page_config(page_title="NOD Intelligence Hub", layout="wide")
@@ -107,9 +91,8 @@ st.markdown("""
 with st.sidebar:
     st.title("🛡️ NOD 전략 센터")
     
-    # API Key 인식 오류 해결: 세션 상태를 직접 확인하고 설정
-    current_key = st.session_state.settings.get("api_key", "")
-    if current_key:
+    # API 키 처리
+    if st.session_state.settings.get("api_key"):
         st.success("✅ AI 연결됨")
         if st.button("Key 수정"):
             st.session_state.settings["api_key"] = ""
@@ -146,17 +129,16 @@ def fetch_news():
 
     for cat, feeds in st.session_state.settings["channels"].items():
         for f in feeds:
-            if not f["active"]: continue
+            if not f.get("active"): continue
             d = feedparser.parse(f["url"])
             for entry in d.entries[:7]:
                 try:
                     p_date = datetime.fromtimestamp(time.mktime(entry.published_parsed))
                     if p_date < limit: continue
-                    
                     results.append({
                         "title": translator.translate(entry.title),
                         "summary": translator.translate(BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:150]),
-                        "img": get_robust_thumbnail(entry), # 하이브리드 로직
+                        "img": get_robust_thumbnail(entry),
                         "source": f["name"],
                         "date": p_date.strftime("%m/%d"),
                         "link": entry.link
@@ -165,17 +147,30 @@ def fetch_news():
     results.sort(key=lambda x: x['date'], reverse=True)
     return results
 
+# --- 7. AI 분석 모델 호출 (에러 해결 핵심 로직) ---
+def get_ai_response(prompt):
+    api_key = st.session_state.settings.get("api_key")
+    if not api_key: return "API Key가 없습니다."
+    
+    genai.configure(api_key=api_key)
+    
+    # NotFound 에러를 방지하기 위해 사용 가능한 모델 명칭을 순차적으로 시도합니다.
+    model_variants = ["models/gemini-1.5-flash", "gemini-1.5-flash"]
+    
+    for model_name in model_variants:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            if "not_found" in str(e).lower() or "404" in str(e):
+                continue # 다음 모델 이름으로 시도
+            return f"에러 발생: {str(e)}"
+    
+    return "지원되는 Gemini 모델을 찾을 수 없습니다. API 설정을 확인해주세요."
+
 st.title("🚀 NOD Intelligence Dashboard")
 news_data = fetch_news()
-
-# AI 모델 설정 (키 인식 오류 방지)
-def get_model():
-    api_key = st.session_state.settings.get("api_key")
-    if not api_key: return None
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel('gemini-1.5-flash-latest')
-
-model = get_model()
 
 if news_data:
     rows = [news_data[i:i + 3] for i in range(0, len(news_data), 3)]
@@ -192,16 +187,14 @@ if news_data:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                if st.button("🔍 전략 Deep-dive", key=f"btn_{item['link'][-10:]}"):
-                    if model:
-                        with st.spinner("AI 분석 리포트 생성 중..."):
-                            prompt = f"{st.session_state.settings['ai_analysis_prompt']}\n\n내용: {item['title']} - {item['summary']}"
-                            res = model.generate_content(prompt)
-                            st.info(res.text)
-                            # 분석 완료 후 슬랙 전송 버튼 노출
-                            if st.button("📢 슬랙으로 공유하기", key=f"slack_{item['link'][-10:]}"):
-                                send_to_slack(item['title'], res.text)
-                    else:
-                        st.warning("사이드바에서 Gemini API Key를 먼저 등록해 주세요.")
+                if st.button("🔍 전략 Deep-dive", key=f"btn_{item['link'][-15:]}"):
+                    with st.spinner("AI 분석 리포트 생성 중..."):
+                        prompt = f"{st.session_state.settings['ai_analysis_prompt']}\n\n내용: {item['title']} - {item['summary']}"
+                        analysis_text = get_ai_response(prompt)
+                        st.info(analysis_text)
+                        
+                        # 슬랙 전송 버튼
+                        if st.button("📢 슬랙으로 공유", key=f"sl_{item['link'][-15:]}"):
+                            send_to_slack(item['title'], analysis_text)
 else:
     st.info("뉴스를 수집 중이거나 조건에 맞는 데이터가 없습니다.")
