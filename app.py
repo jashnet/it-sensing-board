@@ -11,10 +11,10 @@ import requests
 import hashlib
 import socket
 
-# --- 1. 기본 채널 데이터 (최초 1회 로드용) ---
-def get_default_channels():
+# --- 1. 초기 채널 데이터 (최초 실행 시 DB 생성용) ---
+def get_initial_channels():
     return {
-        "Global Innovation": [
+        "Global Innovation (23)": [
             {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "active": True},
             {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "active": True},
             {"name": "Wired", "url": "https://www.wired.com/feed/rss", "active": True},
@@ -22,7 +22,7 @@ def get_default_channels():
             {"name": "Gizmodo", "url": "https://gizmodo.com/rss", "active": True},
             {"name": "Product Hunt", "url": "https://www.producthunt.com/feed", "active": True},
             {"name": "Yanko Design", "url": "https://www.yankodesign.com/feed/", "active": True},
-            {"name": "Fast Company", "url": "https://www.fastcompany.com/design/rss", "active": True},
+            {"name": "Fast Company Design", "url": "https://www.fastcompany.com/design/rss", "active": True},
             {"name": "IEEE Spectrum", "url": "https://spectrum.ieee.org/rss/fulltext", "active": True},
             {"name": "MIT Tech Review", "url": "https://www.technologyreview.com/feed/", "active": True},
             {"name": "9to5Google", "url": "https://9to5google.com/feed/", "active": True},
@@ -39,7 +39,7 @@ def get_default_channels():
             {"name": "ReadWrite", "url": "https://readwrite.com/feed/", "active": True},
             {"name": "ZDNet", "url": "https://www.zdnet.com/news/rss.xml", "active": True}
         ],
-        "China AI/HW": [
+        "China AI/HW (11)": [
             {"name": "36Kr (CN)", "url": "https://36kr.com/feed", "active": True},
             {"name": "TechNode", "url": "https://technode.com/feed/", "active": True},
             {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": True},
@@ -52,7 +52,7 @@ def get_default_channels():
             {"name": "Sina Tech", "url": "https://tech.sina.com.cn/rss/all.xml", "active": True},
             {"name": "Leiphone", "url": "https://www.leiphone.com/feed", "active": True}
         ],
-        "Japan Innovation": [
+        "Japan Innovation (11)": [
             {"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True},
             {"name": "ITmedia News", "url": "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml", "active": True},
             {"name": "Gizmodo JP", "url": "https://www.gizmodo.jp/index.xml", "active": True},
@@ -67,31 +67,39 @@ def get_default_channels():
         ]
     }
 
-# --- 2. 설정 및 데이터베이스 로드/저장 ---
-def get_user_settings(user_id):
-    filename = f"nod_user_{user_id}_db.json"
+# --- 2. 사용자별 설정 로드 및 저장 함수 ---
+def get_user_file(user_id):
+    return f"nod_samsung_user_{user_id}.json"
+
+def load_user_settings(user_id):
+    filename = get_user_file(user_id)
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        # 최초 실행 시 기본값 생성
-        new_settings = {
+        # 파일이 없으면 기본 설정 반환
+        settings = {
             "api_key": "AIzaSyCW7kwkCqCSN-usKFG9gwcPzYlHwtQW_DQ",
+            "slack_webhook": "",
             "sensing_period": 7,
             "max_articles": 30,
-            "filter_prompt": "기술적 도약(AI/HCI), 시장 파괴력, 사용자 행태 변화 중심의 혁신 뉴스.",
-            "ai_prompt": "삼성전자 기획자 관점에서 Fact/Impact/Takeaway 3단계 분석 수행.",
-            "channels": get_default_channels(),
-            "category_active": {"Global Innovation": True, "China AI/HW": True, "Japan Innovation": True}
+            "filter_strength": 3,
+            "additional_filter": "",
+            "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능, 스타트업의 신규 디바이스 시도에 해당하는 뉴스 위주.",
+            "ai_prompt": """삼성전자(Samsung) 기획자 관점에서 3단계 분석을 수행하라:
+            a) Fact Summary: 핵심 사실 요약 (한국어로 자연스럽게)
+            b) 3-Year Future Impact: 향후 3년 내 에코시스템 변화 예측
+            c) Samsung Takeaway: 삼성 제품 혁신을 위한 시사점""",
+            "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
+            "channels": get_initial_channels() # 외부 DB 로직 핵심
         }
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(new_settings, f, ensure_ascii=False, indent=4)
-        return new_settings
+        save_user_settings(user_id, settings)
+        return settings
 
-def save_user_settings(user_id, data):
-    filename = f"nod_user_{user_id}_db.json"
+def save_user_settings(user_id, settings):
+    filename = get_user_file(user_id)
     with open(filename, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+        json.dump(settings, f, ensure_ascii=False, indent=4)
 
 # --- 3. 유틸리티 함수 ---
 def natural_translate(text):
@@ -110,40 +118,39 @@ def get_rescue_thumbnail(entry):
                 og_img = soup.find("meta", property="og:image")
                 if og_img: return og_img["content"]
         except: pass
-    return f"https://s.wordpress.com/mshots/v1/{link}?w=600" if link else ""
+    return f"https://s.wordpress.com/mshots/v1/{link}?w=600" if link else "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80"
 
 def get_ai_model():
-    api_key = st.session_state.settings.get("api_key", "").strip()
-    if not api_key: return None
     try:
-        genai.configure(api_key=api_key)
+        genai.configure(api_key=st.session_state.settings["api_key"])
         return genai.GenerativeModel('gemini-1.5-flash')
     except: return None
 
-# --- 4. 데이터 엔진 (전략적 필터 로직 포함) ---
+# --- 4. 데이터 엔진 (진행률 및 에러 방어) ---
 def fetch_sensing_data(settings):
     all_news = []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     model = get_ai_model()
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/110.0.0.0 Safari/537.36"
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
     socket.setdefaulttimeout(15)
 
     active_feeds = []
     for cat, feeds in settings["channels"].items():
         if settings["category_active"].get(cat, True):
             for f in feeds:
-                if f.get("active", True): active_feeds.append((cat, f))
+                if f["active"]: active_feeds.append((cat, f))
     
     if not active_feeds: return []
-    
+
     progress_bar = st.progress(0)
     status_text = st.empty()
-    processed = 0
+    processed_count = 0
 
     for cat, f in active_feeds:
-        processed += 1
-        status_text.caption(f"📡 {cat} - {f['name']} 센싱 중... ({int(processed/len(active_feeds)*100)}%)")
-        progress_bar.progress(processed/len(active_feeds))
+        processed_count += 1
+        percent = int((processed_count / len(active_feeds)) * 100)
+        status_text.caption(f"📡 {cat} - {f['name']} 센싱 중... ({percent}%)")
+        progress_bar.progress(processed_count / len(active_feeds))
         
         try:
             d = feedparser.parse(f["url"], agent=USER_AGENT)
@@ -154,95 +161,114 @@ def fetch_sensing_data(settings):
                     
                     relevance_score = 5
                     if model:
-                        filter_query = f"뉴스제목: {entry.title}\n가이드: {settings['filter_prompt']}\n혁신적이면 'True,점수(1-10)'로 답해."
-                        res = model.generate_content(filter_query).text.strip().lower()
-                        if "true" not in res: continue
-                        try: relevance_score = int(''.join(filter(str.isdigit, res)))
+                        filter_query = f"[제목] {entry.title}\n기준: {settings['filter_prompt']}\n추가 필터: {settings['additional_filter']}\nTrue/False,점수(1-10) 형식 답해."
+                        res = model.generate_content(filter_query).text.strip()
+                        if "true" not in res.lower(): continue
+                        try: relevance_score = int(res.split(",")[-1])
                         except: relevance_score = 5
 
                     all_news.append({
                         "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
-                        "title_en": entry.title, "title_ko": natural_translate(entry.title),
+                        "title_en": entry.title,
+                        "title_ko": natural_translate(entry.title),
                         "summary_ko": natural_translate(BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:250]),
                         "img": get_rescue_thumbnail(entry),
-                        "source": f["name"], "category": cat, "date_obj": p_date, "date": p_date.strftime("%Y.%m.%d"),
-                        "link": entry.link, "score": relevance_score
+                        "source": f["name"], "category": cat,
+                        "date_obj": p_date, "date": p_date.strftime("%Y.%m.%d"), "link": entry.link,
+                        "score": relevance_score
                     })
                 except: continue
         except: continue
     
-    progress_bar.empty(); status_text.empty()
+    status_text.empty()
+    progress_bar.empty()
     all_news.sort(key=lambda x: x['date_obj'], reverse=True)
     return all_news
 
-# --- 5. 사이드바 (사용자/채널/필터 관리) ---
-st.set_page_config(page_title="NOD Intelligence Hub", layout="wide")
-
+# --- 5. 사이드바 제어 (수정 사항 집중 반영) ---
 with st.sidebar:
     st.title("👤 User Profile")
-    user_id = st.radio("사용자 선택", ["1", "2", "3", "4"], horizontal=True)
+    # 사용자 선택 기능
+    selected_user = st.radio("사용자 선택", ["1", "2", "3", "4"], horizontal=True)
     
-    # 세션에 설정 로드
-    if "current_user" not in st.session_state or st.session_state.current_user != user_id:
-        st.session_state.current_user = user_id
-        st.session_state.settings = get_user_settings(user_id)
-        if "news_data" in st.session_state: del st.session_state.news_data
+    # 사용자 변경 감지 시 설정 로드
+    if "current_user" not in st.session_state or st.session_state.current_user != selected_user:
+        st.session_state.current_user = selected_user
+        st.session_state.settings = load_user_settings(selected_user)
+        if "news_data" in st.session_state: del st.session_state.news_data # 데이터 초기화
         st.rerun()
 
     st.divider()
     st.title("🛡️ NOD Controller")
-    
-    # API 키 관리
     if "show_api" not in st.session_state: st.session_state.show_api = False
-    if not st.session_state.show_api:
-        if st.button("🔑 API Key 수정"): st.session_state.show_api = True; st.rerun()
+    if st.session_state.settings["api_key"] and not st.session_state.show_api:
+        st.success(f"✅ User {selected_user} 연동됨")
+        if st.button("키 수정"): st.session_state.show_api = True; st.rerun()
     else:
         new_key = st.text_input("Gemini API Key", value=st.session_state.settings["api_key"], type="password")
-        if st.button("✅ 적용"): 
-            st.session_state.settings["api_key"] = new_key; st.session_state.show_api = False
-            save_user_settings(user_id, st.session_state.settings); st.rerun()
+        if st.button("저장 및 적용"):
+            st.session_state.settings["api_key"] = new_key; st.session_state.show_api = False; 
+            save_user_settings(selected_user, st.session_state.settings); st.rerun()
 
     st.divider()
-    st.subheader("🌐 Channel Management")
+    st.subheader("🌐 채널 및 카테고리 관리")
     for cat in list(st.session_state.settings["channels"].keys()):
-        st.session_state.settings["category_active"][cat] = st.toggle(f"{cat} 그룹 활성화", value=st.session_state.settings["category_active"].get(cat, True))
+        st.session_state.settings["category_active"][cat] = st.toggle(cat, value=st.session_state.settings["category_active"].get(cat, True))
         if st.session_state.settings["category_active"][cat]:
-            with st.expander(f"{cat} 상세"):
-                # 채널 리스트 및 삭제
+            with st.expander(f"{cat} 관리"):
+                # 채널 리스트 표시 및 삭제 기능
                 for idx, f in enumerate(st.session_state.settings["channels"][cat]):
                     col_ch, col_del = st.columns([4, 1])
-                    f["active"] = col_ch.checkbox(f["name"], value=f.get("active", True), key=f"ch_{user_id}_{cat}_{idx}")
-                    if col_del.button("❌", key=f"del_{user_id}_{cat}_{idx}"):
+                    f["active"] = col_ch.checkbox(f["name"], value=f["active"], key=f"side_{selected_user}_{cat}_{idx}")
+                    if col_del.button("❌", key=f"del_{selected_user}_{cat}_{idx}"):
                         st.session_state.settings["channels"][cat].pop(idx)
-                        save_user_settings(user_id, st.session_state.settings); st.rerun()
+                        save_user_settings(selected_user, st.session_state.settings); st.rerun()
                 
-                # 채널 추가 폼
                 st.markdown("---")
-                st.caption("➕ 새 채널 추가")
-                with st.form(f"add_{cat}_{user_id}", clear_on_submit=True):
-                    add_name = st.text_input("채널명")
-                    add_url = st.text_input("RSS URL")
-                    if st.form_submit_button("채널 저장"):
-                        if add_name and add_url:
-                            st.session_state.settings["channels"][cat].append({"name": add_name, "url": add_url, "active": True})
-                            save_user_settings(user_id, st.session_state.settings); st.rerun()
+                # 카테고리별 채널 추가 기능
+                st.caption(f"➕ {cat} 채널 추가")
+                with st.form(f"add_form_{cat}_{selected_user}", clear_on_submit=True):
+                    new_ch_name = st.text_input("채널 이름")
+                    new_ch_url = st.text_input("RSS URL")
+                    if st.form_submit_button("저장"):
+                        if new_ch_name and new_ch_url:
+                            st.session_state.settings["channels"][cat].append({"name": new_ch_name, "url": new_ch_url, "active": True})
+                            save_user_settings(selected_user, st.session_state.settings); st.rerun()
 
     st.divider()
-    with st.expander("⚙️ 고급 필터 설정"):
-        st.session_state.settings["sensing_period"] = st.slider("수집 기간 (일)", 1, 30, st.session_state.settings["sensing_period"])
-        st.session_state.settings["filter_prompt"] = st.text_area("필터 프롬프트", value=st.session_state.settings["filter_prompt"])
-        st.session_state.settings["ai_prompt"] = st.text_area("분석 가이드", value=st.session_state.settings["ai_prompt"])
+    with st.expander("⚙️ 고급 설정", expanded=True):
+        st.session_state.settings["sensing_period"] = st.slider("수집 기간 (일 이내)", 1, 30, st.session_state.settings.get("sensing_period", 7))
+        st.session_state.settings["filter_prompt"] = st.text_area("News Filter", value=st.session_state.settings["filter_prompt"])
+        st.session_state.settings["additional_filter"] = st.text_area("Additional Filter", value=st.session_state.settings.get("additional_filter", ""))
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 분석 가이드", value=st.session_state.settings.get("ai_prompt", ""))
+        st.session_state.settings["filter_strength"] = st.slider("Filter 강도", 1, 5, st.session_state.settings["filter_strength"])
+        st.session_state.settings["max_articles"] = st.selectbox("기사 개수", [10, 20, 30, 50], index=1)
 
     if st.button("🚀 Apply & Sensing Start", use_container_width=True):
-        save_user_settings(user_id, st.session_state.settings)
+        save_user_settings(selected_user, st.session_state.settings)
         if "news_data" in st.session_state: del st.session_state.news_data
         st.rerun()
 
-# --- 6. 메인 렌더링 ---
-st.markdown("""<div style='padding: 40px; text-align: center; background: linear-gradient(135deg, #034EA2 0%, #007AFF 100%); border-radius: 0 0 40px 40px; color: white; margin-bottom: 40px;'>
-    <h1 style='margin:0;'>Samsung NOD Intelligence Hub</h1>
-    <p style='opacity:0.8;'>User {} Profile - Strategic Technology Sensing</p>
-</div>""".format(user_id), unsafe_allow_html=True)
+# --- 6. 모던 UI 디자인 및 메인 렌더링 ---
+st.set_page_config(page_title="NOD Strategy Hub v8.3", layout="wide")
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+KR:wght@300;400;700&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8f9fc; color: #1d1d1f; }
+    .header-container { padding: 40px 0; text-align: center; background: linear-gradient(135deg, #034EA2 0%, #007AFF 100%); border-radius: 0 0 40px 40px; color: white; margin-bottom: 40px; box-shadow: 0 10px 30px rgba(3, 78, 162, 0.2); }
+    .header-title { font-size: 2.3rem; font-weight: 700; margin-bottom: 5px; }
+    .modern-card { background: white; padding: 25px; border-radius: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #edf2f7; height: 100%; display: flex; flex-direction: column; transition: all 0.3s ease; }
+    .modern-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.08); border-color: #034EA2; }
+    .card-thumb { width: 100%; height: 200px; object-fit: cover; border-radius: 20px; margin-bottom: 18px; background-color: #f0f0f0; }
+    .card-badge { background: #eef2ff; color: #034EA2; padding: 4px 12px; border-radius: 100px; font-size: 0.7rem; font-weight: 700; display: inline-block; margin-bottom: 12px; }
+    .card-title-ko { font-size: 1.1rem; font-weight: 700; color: #1a1c1e; line-height: 1.4; margin-bottom: 4px; }
+    .card-title-en { font-size: 0.8rem; color: #8e8e93; font-style: italic; margin-bottom: 12px; display: block; }
+    .card-summary { font-size: 0.85rem; color: #4a5568; line-height: 1.6; flex-grow: 1; margin-bottom: 15px; }
+    .link-btn { font-size: 0.8rem; font-weight: 700; color: #034EA2; text-decoration: none; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""<div class="header-container"><div class="header-title">NGEPT NOD Sensing Dashboard</div><div>Future Experience Sensing & Opportunity Discovery</div></div>""", unsafe_allow_html=True)
 
 if "news_data" not in st.session_state:
     st.session_state.news_data = fetch_sensing_data(st.session_state.settings)
@@ -250,45 +276,68 @@ if "news_data" not in st.session_state:
 raw_data = st.session_state.news_data
 
 if raw_data:
-    st.subheader("🌟 Strategic Top Picks")
+    # 🌟 Top Picks Section (고정 6개)
+    st.subheader(f"🌟 Strategic Top Picks (User {selected_user})")
     top_6 = raw_data[:6]
     rows = [top_6[i:i+3] for i in range(0, len(top_6), 3)]
     for row in rows:
         cols = st.columns(3)
         for j, item in enumerate(row):
             with cols[j]:
-                st.markdown(f"""<div style='background: white; padding: 25px; border-radius: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #edf2f7; height: 100%;'>
-                    <div style='background: #eef2ff; color: #034EA2; padding: 4px 12px; border-radius: 100px; font-size: 0.7rem; font-weight: 700; display: inline-block; margin-bottom: 12px;'>{item['source']} | {item['date']}</div>
-                    <img src="{item['img']}" style='width:100%; height:180px; object-fit:cover; border-radius:20px; margin-bottom:15px;'>
-                    <div style='font-weight:700; font-size:1.1rem; line-height:1.4;'>{item['title_ko']}</div>
-                    <div style='font-size:0.8rem; color:#888; font-style:italic; margin-bottom:10px;'>{item['title_en']}</div>
-                    <div style='font-size:0.85rem; color:#4a5568; line-height:1.6;'>{item['summary_ko'][:150]}...</div>
-                    <a href="{item['link']}" target="_blank" style='font-size:0.8rem; color:#034EA2; text-decoration:none; margin-top:10px; display:block;'>🔗 원본 기사 읽기</a>
-                </div>""", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div class="modern-card">
+                    <div class="card-badge">{item['source']} | {item['date']}</div>
+                    <img src="{item['img']}" class="card-thumb">
+                    <div class="card-title-ko">{item['title_ko']}</div>
+                    <span class="card-title-en">{item['title_en']}</span>
+                    <div class="card-summary">{item['summary_ko']}...</div>
+                    <a href="{item['link']}" target="_blank" class="link-btn">🔗 원본 기사 읽기</a>
+                </div>
+                """, unsafe_allow_html=True)
                 if st.button("🔍 Deep-dive", key=f"dd_{item['id']}"):
-                    st.info(get_ai_model().generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}").text)
+                    model = get_ai_model()
+                    if model:
+                        with st.spinner("분석 중..."):
+                            try:
+                                res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
+                                st.info(res.text)
+                            except Exception as e: st.error(f"분석 오류: {e}")
+                    else: st.error("API Key 확인 필요")
 
+    st.markdown("<br><br>", unsafe_allow_html=True)
     st.divider()
+
+    # 📋 Sensing Stream Section
     st.subheader("📋 Sensing Stream")
     with st.container():
         c1, c2, c3 = st.columns([2, 2, 2])
-        with c1: sort_val = st.selectbox("📅 정렬", ["최신순", "AI 관련도순"])
+        with c1: sort_val = st.selectbox("📅 정렬", ["최신순", "과거순", "AI 관련도순"])
         with c2: cat_val = st.multiselect("📂 카테고리", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
-        with c3: search_val = st.text_input("🔍 검색")
+        with c3: search_val = st.text_input("🔍 스트림 내 검색", "")
 
     stream_data = [d for d in raw_data[6:] if d["category"] in cat_val]
     if search_val: stream_data = [d for d in stream_data if search_val.lower() in d["title_ko"].lower()]
     if sort_val == "최신순": stream_data.sort(key=lambda x: x["date_obj"], reverse=True)
+    elif sort_val == "과거순": stream_data.sort(key=lambda x: x["date_obj"])
     else: stream_data.sort(key=lambda x: x["score"], reverse=True)
 
     for item in stream_data[:st.session_state.settings["max_articles"]]:
-        col_img, col_txt = st.columns([1, 4])
-        with col_img: st.image(item['img'], use_container_width=True)
-        with col_txt:
-            st.markdown(f"**{item['title_ko']}**")
-            st.caption(f"{item['source']} | {item['date']} | {item['category']}")
-            if st.button("Quick View", key=f"qa_{item['id']}"):
-                st.success(get_ai_model().generate_content(f"요약: {item['title_en']}").text)
-        st.markdown("---")
+        with st.container():
+            col_img, col_txt = st.columns([1, 4])
+            with col_img: st.image(item['img'], use_container_width=True)
+            with col_txt:
+                st.markdown(f"""
+                <div style="margin-bottom:15px;">
+                    <div class="card-badge" style="margin-bottom:5px;">{item['category']} | {item['source']}</div>
+                    <div class="card-title-ko" style="font-size:1.1rem;">{item['title_ko']}</div>
+                    <span class="card-title-en">{item['title_en']}</span>
+                    <p style="font-size:0.9rem; color:#4a5568;">{item['summary_ko']}...</p>
+                    <a href="{item['link']}" target="_blank" class="link-btn">🔗 원본 보기</a>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("Quick Analysis", key=f"qa_{item['id']}"):
+                    model = get_ai_model()
+                    if model: st.success(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}").text)
+            st.markdown("<hr style='border-top: 1px solid #edf2f7;'>", unsafe_allow_html=True)
 else:
-    st.info("조건에 맞는 뉴스가 없습니다. 기간을 늘리거나 필터를 조정해 보세요.")
+    st.info("조건에 맞는 뉴스가 없습니다. 설정을 변경하고 Apply 버튼을 눌러보세요.")
