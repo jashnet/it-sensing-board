@@ -153,7 +153,7 @@ def show_analysis_popup(item, settings):
     if st.button("닫기"): st.rerun()
 
 # --- 6. 화이트 인스타그램 UI 스타일링 ---
-st.set_page_config(page_title="NGEPT Hub v11.4", layout="wide")
+st.set_page_config(page_title="NGEPT Hub v11.5", layout="wide")
 
 st.markdown("""
 <style>
@@ -173,10 +173,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 7. 사이드바 구성 ---
+# --- 7. 사이드바 구성 (프롬프트 수정 기능 추가) ---
 with st.sidebar:
     st.title("👤 Strategy Profile")
-    u_id = st.radio("사용자", ["1", "2", "3", "4"], horizontal=True)
+    u_id = st.radio("사용자 선택", ["1", "2", "3", "4"], horizontal=True)
     if "current_user" not in st.session_state or st.session_state.current_user != u_id:
         st.session_state.current_user = u_id
         st.session_state.settings = load_user_settings(u_id)
@@ -184,6 +184,7 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+    # API 키 관리
     curr_key = st.session_state.settings.get("api_key", "").strip()
     if not st.session_state.get("editing_key", False) and curr_key:
         st.success("✅ API 인증 완료")
@@ -191,12 +192,13 @@ with st.sidebar:
             st.session_state.editing_key = True; st.rerun()
     else:
         new_key = st.text_input("Gemini API Key", value=curr_key, type="password")
-        if st.button("💾 저장"):
+        if st.button("💾 키 저장"):
             st.session_state.settings["api_key"] = new_key
             save_user_settings(u_id, st.session_state.settings)
             st.session_state.editing_key = False; st.rerun()
 
     st.divider()
+    # 카테고리 관리
     st.subheader("📂 카테고리 관리")
     for cat in list(st.session_state.settings["channels"].keys()):
         st.session_state.settings["category_active"][cat] = st.toggle(cat, value=st.session_state.settings["category_active"].get(cat, True))
@@ -216,12 +218,29 @@ with st.sidebar:
                         save_user_settings(u_id, st.session_state.settings); st.rerun()
 
     st.divider()
+    # 고급 전략 설정 (프롬프트 수정 기능 포함)
     with st.expander("⚙️ 고급 전략 설정", expanded=True):
         st.session_state.settings["sensing_period"] = st.slider("수집 기간 (일)", 1, 30, st.session_state.settings["sensing_period"])
         st.session_state.settings["max_articles"] = st.selectbox("표시 기사 수", [10, 20, 30, 50, 100], index=2)
-        st.session_state.settings["filter_strength"] = st.slider("필터 강도", 1, 5, st.session_state.settings.get("filter_strength", 3))
-        st.session_state.settings["filter_weight"] = st.slider("AI 가중치 (%)", 0, 100, st.session_state.settings.get("filter_weight", 70))
-        st.session_state.settings["ai_prompt"] = st.text_area("분석 가이드라인", value=st.session_state.settings["ai_prompt"], height=150)
+        st.session_state.settings["filter_weight"] = st.slider("AI 필터 가중치 (%)", 0, 100, st.session_state.settings.get("filter_weight", 70))
+        
+        st.markdown("---")
+        st.markdown("**📝 AI 분석 프롬프트 수정**")
+        # 프롬프트 에디터 추가
+        st.session_state.settings["ai_prompt"] = st.text_area(
+            "AI 분석 가이드라인", 
+            value=st.session_state.settings.get("ai_prompt", ""), 
+            height=250,
+            help="AI가 기사를 분석할 때 따를 페르소나와 형식을 정의합니다."
+        )
+        
+        st.markdown("**🔍 필터 프롬프트 수정**")
+        st.session_state.settings["filter_prompt"] = st.text_area(
+            "뉴스 필터 기준", 
+            value=st.session_state.settings.get("filter_prompt", ""), 
+            height=100,
+            help="수집 단계에서 관심 있는 뉴스를 거르는 기준입니다."
+        )
 
     if st.button("🚀 Apply & Sensing Start", use_container_width=True, type="primary"):
         save_user_settings(u_id, st.session_state.settings)
@@ -232,19 +251,16 @@ st.markdown("""<div class="main-header"><h1>NGEPT Strategy Hub</h1><p>Experience
 raw_data = get_all_news(st.session_state.settings)
 
 if raw_data:
-    # --- 상단 필터/정렬 바 ---
     f1, f2, f3 = st.columns([2, 2, 2])
     with f1: sort_v = st.selectbox("📅 정렬", ["최신순", "과거순"])
     with f2: cat_v = st.multiselect("📂 카테고리 필터", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
     with f3: search_v = st.text_input("🔍 스트림 내 검색", "")
 
-    # 데이터 필터링/정렬
     display_data = [d for d in raw_data if d["category"] in cat_v]
     if search_v: display_data = [d for d in display_data if search_v.lower() in d["title_ko"].lower() or search_v.lower() in d["title_en"].lower()]
     if sort_v == "최신순": display_data.sort(key=lambda x: x["date_obj"], reverse=True)
     else: display_data.sort(key=lambda x: x["date_obj"])
 
-    # 카드 그리드 출력 (3열)
     rows = [display_data[i:i + 3] for i in range(0, min(len(display_data), st.session_state.settings["max_articles"]), 3)]
     
     for row in rows:
