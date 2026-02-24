@@ -12,7 +12,7 @@ import hashlib
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
-# --- 1. 초기 채널 데이터 (원복 및 통합) ---
+# --- 1. 초기 채널 데이터 (원복) ---
 def get_initial_channels():
     return {
         "Global Innovation (23)": [
@@ -68,7 +68,7 @@ def get_initial_channels():
         ]
     }
 
-# --- 2. 설정 로직 ---
+# --- 2. 설정 관리 ---
 def get_user_file(user_id):
     return f"nod_samsung_user_{user_id}.json"
 
@@ -81,8 +81,8 @@ def load_user_settings(user_id):
         "api_key": "",
         "sensing_period": 7,
         "max_articles": 30,
-        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능 중심.",
-        "ai_prompt": "삼성전자 기획자 관점 분석: a)사실요약 b)3년후 영향 c)시사점",
+        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능 위주.",
+        "ai_prompt": "삼성전자 기획자 관점 3단계 분석: a)요약 b)3년후 영향 c)시사점",
         "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
         "channels": get_initial_channels()
     }
@@ -91,20 +91,32 @@ def save_user_settings(user_id, settings):
     with open(get_user_file(user_id), "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
-# --- 3. 모델 및 유틸리티 ---
+# --- 3. 모델 동적 로드 및 유틸리티 ---
 def get_ai_model(api_key):
     if not api_key: return None
     try:
         genai.configure(api_key=api_key.strip())
-        # 404 에러 방지를 위한 순차적 모델 시도
-        for model_name in ['gemini-1.5-flash', 'gemini-pro', 'models/gemini-1.5-flash']:
-            try:
-                model = genai.GenerativeModel(model_name)
-                return model
-            except: continue
+        
+        # [해결책] 사용 가능한 모델 목록을 조회하여 적합한 모델을 자동으로 선택
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # 선호 모델 순위
+        preferred = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']
+        
+        for p in preferred:
+            if p in available_models:
+                return genai.GenerativeModel(p)
+        
+        # 만약 선호 모델이 목록에 없으면 가능한 첫 번째 모델 사용
+        if available_models:
+            return genai.GenerativeModel(available_models[0])
+            
         return None
     except Exception as e:
-        st.error(f"AI 설정 오류: {e}")
+        st.error(f"AI 모델 목록 조회 실패: {e}")
         return None
 
 @st.cache_data(ttl=3600)
@@ -145,7 +157,7 @@ def get_all_news(settings):
     return sorted(all_news, key=lambda x: x['date_obj'], reverse=True)
 
 # --- 5. 사이드바 UI ---
-st.set_page_config(page_title="NOD Strategy Hub v9.7", layout="wide")
+st.set_page_config(page_title="NOD Strategy Hub v9.8", layout="wide")
 
 with st.sidebar:
     st.title("👤 User Profile")
@@ -210,12 +222,12 @@ if news_data:
             if st.button("🔍 Deep Analysis", key=f"btn_{item['id']}"):
                 model = get_ai_model(st.session_state.settings["api_key"])
                 if model:
-                    with st.spinner("AI 분석 중..."):
+                    with st.spinner(f"AI 분석 중... ({model.model_name})"):
                         try:
                             res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
                             st.info(res.text)
                         except Exception as e: st.error(f"분석 실패: {e}")
-                else: st.error("API 키 확인 필요 (AI Studio에서 발급 권장)")
+                else: st.error("접근 가능한 Gemini 모델이 없습니다. API 키 권한을 확인하세요.")
 
     st.divider()
     st.subheader("📋 실시간 뉴스 스트림")
