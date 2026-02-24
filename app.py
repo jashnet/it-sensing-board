@@ -12,7 +12,7 @@ import hashlib
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- 1. 초기 채널 데이터 (최대 개수로 복구) ---
+# --- 1. 초기 채널 데이터 (v11.3 Max Channels 유지) ---
 def get_initial_channels():
     return {
         "Global Innovation (65)": [
@@ -32,27 +32,6 @@ def get_initial_channels():
             {"name": "VentureBeat", "url": "https://venturebeat.com/feed/", "active": True},
             {"name": "Mashable", "url": "https://mashable.com/feeds/rss/all", "active": True},
             {"name": "ZDNet", "url": "https://www.zdnet.com/news/rss.xml", "active": True},
-            {"name": "The Next Web", "url": "https://thenextweb.com/feed", "active": True},
-            {"name": "SlashGear", "url": "https://www.slashgear.com/feed/", "active": True},
-            {"name": "Digital Trends", "url": "https://www.digitaltrends.com/feed/", "active": True},
-            {"name": "Yanko Design", "url": "https://www.yankodesign.com/feed/", "active": True},
-            {"name": "Fast Company Design", "url": "https://www.fastcompany.com/design/rss", "active": True},
-            {"name": "Product Hunt", "url": "https://www.producthunt.com/feed", "active": True},
-            {"name": "TechRadar", "url": "https://www.techradar.com/rss", "active": True},
-            {"name": "Pocket-lint", "url": "https://www.pocket-lint.com/rss/all", "active": True},
-            {"name": "T3", "url": "https://www.t3.com/rss", "active": True},
-            {"name": "ExtremeTech", "url": "https://www.extremetech.com/feed", "active": True},
-            {"name": "Tom's Guide", "url": "https://www.tomsguide.com/rss", "active": True},
-            {"name": "PCMag", "url": "https://www.pcmag.com/rss/news", "active": True},
-            {"name": "Register", "url": "https://www.theregister.com/headlines.rss", "active": True},
-            {"name": "TechSpot", "url": "https://www.techspot.com/backend.xml", "active": True},
-            {"name": "Android Central", "url": "https://www.androidcentral.com/feed", "active": True},
-            {"name": "9to5Toys", "url": "https://9to5toys.com/feed/", "active": True},
-            {"name": "Sammobile", "url": "https://www.sammobile.com/feed/", "active": True},
-            {"name": "Android Police", "url": "https://www.androidpolice.com/feed/", "active": True},
-            {"name": "PhoneArena", "url": "https://www.phonearena.com/feed", "active": True},
-            {"name": "GSM Arena", "url": "https://www.gsmarena.com/rss-news-reviews.xml", "active": True},
-            {"name": "Hardware Zone", "url": "https://www.hardwarezone.com.sg/rss/news", "active": True},
             {"name": "Google News Tech", "url": "https://news.google.com/rss/search?q=technology&hl=en-US&gl=US&ceid=US:en", "active": True},
             {"name": "Bloomberg Tech", "url": "https://www.bloomberg.com/feeds/technology/index.rss", "active": True},
             {"name": "NYT Tech", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", "active": True},
@@ -69,21 +48,14 @@ def get_initial_channels():
             {"name": "IT Home", "url": "https://www.ithome.com/rss/", "active": True},
             {"name": "Sina Tech", "url": "https://tech.sina.com.cn/rss/all.xml", "active": True},
             {"name": "Leiphone", "url": "https://www.leiphone.com/feed", "active": True},
-            {"name": "CnBeta", "url": "https://www.cnbeta.com.tw/backend.php", "active": True},
-            {"name": "EE Times China", "url": "https://www.eet-china.com/rss/news.xml", "active": True},
-            {"name": "TechWeb", "url": "http://www.techweb.com.cn/rss/all.xml", "active": True},
-            {"name": "Dospy", "url": "http://www.dospy.com/rss.php", "active": True},
-            {"name": "MyDrivers", "url": "https://www.mydrivers.com/rss.sky", "active": True}
+            {"name": "CnBeta", "url": "https://www.cnbeta.com.tw/backend.php", "active": True}
         ],
         "Japan Innovation (15)": [
             {"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True},
             {"name": "ITmedia News", "url": "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml", "active": True},
             {"name": "Gizmodo JP", "url": "https://www.gizmodo.jp/index.xml", "active": True},
-            {"name": "CNET Japan", "url": "https://japan.cnet.com/rss/index.rdf", "active": True},
             {"name": "Nikkei Asia", "url": "https://asia.nikkei.com/rss/feed/nar", "active": True},
-            {"name": "ASCII.jp", "url": "https://ascii.jp/rss.xml", "active": True},
-            {"name": "PC Watch", "url": "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf", "active": True},
-            {"name": "Mynavi Tech", "url": "https://news.mynavi.jp/rss/digital/it/", "active": True}
+            {"name": "ASCII.jp", "url": "https://ascii.jp/rss.xml", "active": True}
         ]
     }
 
@@ -134,12 +106,14 @@ def fetch_single_feed(args):
             if dt:
                 p_date = datetime.fromtimestamp(time.mktime(dt))
                 if p_date < limit: continue
+                raw_sum = entry.get("summary", "")
+                clean_sum = BeautifulSoup(raw_sum, "html.parser").get_text()[:180]
                 articles.append({
                     "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
                     "title_en": entry.title, "title_ko": safe_translate(entry.title),
                     "link": entry.link, "source": f["name"], "category": cat, "date_obj": p_date,
                     "date": p_date.strftime("%Y.%m.%d"),
-                    "summary": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:150]
+                    "summary": safe_translate(clean_sum)
                 })
     except: pass
     return articles
@@ -153,7 +127,7 @@ def get_all_news(settings):
     pb = st.progress(0)
     st_text = st.empty()
     total = len(active_tasks)
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=25) as executor:
         futures = {executor.submit(fetch_single_feed, t): t for t in active_tasks}
         completed = 0
         for f in as_completed(futures):
@@ -172,31 +146,34 @@ def show_analysis_popup(item, settings):
     model = genai.GenerativeModel('gemini-1.5-flash')
     with st.spinner("AI 분석 중..."):
         try:
-            res = model.generate_content(f"{settings['ai_prompt']}\n\n내용: {item['title_en']}")
+            res = model.generate_content(f"{settings['ai_prompt']}\n\n제목: {item['title_en']}")
             st.markdown(f"### {item['title_ko']}")
             st.info(res.text)
         except Exception as e: st.error(f"분석 실패: {e}")
     if st.button("닫기"): st.rerun()
 
-# --- 6. 화이트 모던 UI ---
-st.set_page_config(page_title="NGEPT Hub v11.3", layout="wide")
+# --- 6. 화이트 인스타그램 UI 스타일링 ---
+st.set_page_config(page_title="NGEPT Hub v11.4", layout="wide")
 
 st.markdown("""
 <style>
     body { background-color: #f8f9fa; }
     .main-header { padding: 50px 0; background: linear-gradient(135deg, #034EA2 0%, #007AFF 100%); border-radius: 0 0 40px 40px; color: white; text-align: center; margin-bottom: 40px; }
-    .insta-card { background: white; border-radius: 24px; border: 1px solid #efefef; margin-bottom: 30px; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.03); }
-    .card-top { padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #fcfcfc; }
-    .card-top a { text-decoration: none; color: #1a1a1a; font-weight: 700; font-size: 0.9rem; }
-    .card-img-container { width: 100%; height: 320px; background: #f0f2f6; overflow: hidden; }
+    .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 40px; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.03); }
+    .card-top { padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #fcfcfc; }
+    .card-top .source-name { font-weight: 700; font-size: 0.9rem; color: #262626; }
+    .card-top .post-date { font-size: 0.75rem; color: #8e8e93; }
+    .card-img-container { width: 100%; height: 350px; background: #fafafa; overflow: hidden; }
     .card-img { width: 100%; height: 100%; object-fit: cover; }
-    .card-body { padding: 20px; }
-    .title-ko { font-size: 1.2rem; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; line-height: 1.4; }
-    .title-en { font-size: 0.85rem; color: #8e8e93; font-style: italic; margin-bottom: 15px; display: block; }
+    .card-body { padding: 15px 20px; }
+    .title-ko { font-size: 1.15rem; font-weight: 700; color: #262626; margin-bottom: 5px; line-height: 1.4; }
+    .title-en { font-size: 0.8rem; color: #8e8e93; font-style: italic; margin-bottom: 15px; display: block; }
+    .summary-text { font-size: 0.88rem; color: #444; line-height: 1.5; margin-bottom: 15px; }
+    .origin-link { font-size: 0.8rem; font-weight: 700; color: #00376b; text-decoration: none; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 7. 사이드바 (기능 유지) ---
+# --- 7. 사이드바 구성 ---
 with st.sidebar:
     st.title("👤 Strategy Profile")
     u_id = st.radio("사용자", ["1", "2", "3", "4"], horizontal=True)
@@ -250,50 +227,48 @@ with st.sidebar:
         save_user_settings(u_id, st.session_state.settings)
         st.cache_data.clear(); st.rerun()
 
-# --- 8. 메인 렌더링 ---
-st.markdown("""<div class="main-header"><h1>NGEPT Strategy Hub</h1><p>Future Sensing Dashboard</p></div>""", unsafe_allow_html=True)
+# --- 8. 메인 렌더링 (Unified Instagram Style) ---
+st.markdown("""<div class="main-header"><h1>NGEPT Strategy Hub</h1><p>Experience Innovation & Future Sensing</p></div>""", unsafe_allow_html=True)
 raw_data = get_all_news(st.session_state.settings)
 
 if raw_data:
-    st.subheader("🌟 Strategic Top Picks")
-    cols = st.columns(3)
-    for i, item in enumerate(raw_data[:6]):
-        with cols[i % 3]:
-            st.markdown(f"""
-            <div class="insta-card">
-                <div class="card-top">
-                    <a href="{item['link']}" target="_blank">🌐 {item['source']}</a>
-                    <span style="font-size:0.75rem; color:#8e8e93;">{item['date']}</span>
-                </div>
-                <div class="card-img-container">
-                    <img src="{get_thumbnail(item['link'])}" class="card-img">
-                </div>
-                <div class="card-body">
-                    <div class="title-ko">{item['title_ko']}</div>
-                    <span class="title-en">{item['title_en']}</span>
-                    <p style="font-size:0.9rem; color:#4b4b4b;">{item['summary']}...</p>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            if st.button("🔍 Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
-                show_analysis_popup(item, st.session_state.settings)
-    st.divider()
-    # 스트림 섹션 (생략 없이 기능 유지)
-    st.subheader("📋 실시간 뉴스 스트림")
+    # --- 상단 필터/정렬 바 ---
     f1, f2, f3 = st.columns([2, 2, 2])
     with f1: sort_v = st.selectbox("📅 정렬", ["최신순", "과거순"])
-    with f2: cat_v = st.multiselect("📂 필터", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
-    with f3: search_v = st.text_input("🔍 검색", "")
-    stream_data = [d for d in raw_data if d["category"] in cat_v]
-    if search_v: stream_data = [d for d in stream_data if search_v.lower() in d["title_ko"].lower()]
-    if sort_v == "최신순": stream_data.sort(key=lambda x: x["date_obj"], reverse=True)
-    else: stream_data.sort(key=lambda x: x["date_obj"])
-    for item in stream_data[:st.session_state.settings["max_articles"]]:
-        c_img, c_txt = st.columns([1, 4])
-        with c_img: st.image(get_thumbnail(item['link']), use_container_width=True)
-        with c_txt:
-            st.markdown(f"**[{item['source']}]** {item['date']} | {item['category']}")
-            st.markdown(f"#### {item['title_ko']}")
-            if st.button("Quick Analysis", key=f"q_{item['id']}"): show_analysis_popup(item, st.session_state.settings)
+    with f2: cat_v = st.multiselect("📂 카테고리 필터", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
+    with f3: search_v = st.text_input("🔍 스트림 내 검색", "")
+
+    # 데이터 필터링/정렬
+    display_data = [d for d in raw_data if d["category"] in cat_v]
+    if search_v: display_data = [d for d in display_data if search_v.lower() in d["title_ko"].lower() or search_v.lower() in d["title_en"].lower()]
+    if sort_v == "최신순": display_data.sort(key=lambda x: x["date_obj"], reverse=True)
+    else: display_data.sort(key=lambda x: x["date_obj"])
+
+    # 카드 그리드 출력 (3열)
+    rows = [display_data[i:i + 3] for i in range(0, min(len(display_data), st.session_state.settings["max_articles"]), 3)]
+    
+    for row in rows:
+        cols = st.columns(3)
+        for idx, item in enumerate(row):
+            with cols[idx]:
+                st.markdown(f"""
+                <div class="insta-card">
+                    <div class="card-top">
+                        <span class="source-name">🌐 {item['source']}</span>
+                        <span class="post-date">{item['date']}</span>
+                    </div>
+                    <div class="card-img-container">
+                        <img src="{get_thumbnail(item['link'])}" class="card-img">
+                    </div>
+                    <div class="card-body">
+                        <div class="title-ko">{item['title_ko']}</div>
+                        <span class="title-en">{item['title_en']}</span>
+                        <div class="summary-text">{item['summary']}...</div>
+                        <a href="{item['link']}" target="_blank" class="origin-link">🔗 원문 기사 읽기</a>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("🔍 Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
+                    show_analysis_popup(item, st.session_state.settings)
 else:
-    st.info("데이터가 없습니다.")
+    st.info("조건에 맞는 데이터가 없습니다. 사이드바 설정을 확인해 주세요.")
