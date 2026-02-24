@@ -12,7 +12,7 @@ import hashlib
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- 1. 초기 채널 데이터 및 설정 로드 ---
+# --- 1. 초기 데이터 및 설정 로드 ---
 def get_initial_channels():
     return {
         "Global Innovation (23)": [
@@ -73,16 +73,26 @@ def get_user_file(user_id):
 
 def load_user_settings(user_id):
     filename = get_user_file(user_id)
+    # [학습용 프롬프트 데이터 미리 정의]
+    refined_ai_prompt = """당신은 삼성전자 CX(Experience) 전략 기획자입니다. 
+다음 뉴스 예시와 유사한 '미래 경험 혁신' 관점에서 분석하세요:
+- 예시: 멀티 에이전트 생태계, 혁신적 액세서리, 초슬림 베젤 기술, 독특한 커스텀 DIY 하드웨어.
+
+[분석 가이드라인]
+1. 요약(Fact): 기술적 변화의 핵심 (한국어로 자연스럽게)
+2. 영향(Impact): 향후 3년 내 모바일/웨어러블 시장에 줄 변화
+3. 제언(Samsung Takeaway): 우리가 주목해야 할 하드웨어/소프트웨어 혁신 포인트"""
+
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
     return {
-        "api_key": "",
+        "api_key": "AIzaSyBpko5khWacamTzhI6lsA70LyjCCNf06aA",
         "sensing_period": 7,
         "max_articles": 30,
         "filter_strength": 3,
-        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능 위주 뉴스.",
-        "ai_prompt": "삼성전자(Samsung) 기획자 관점 3단계 분석:\na) Fact Summary\nb) 3-Year Future Impact\nc) Samsung Takeaway",
+        "filter_prompt": "제조사별 차세대 디바이스 소식, 혁신적 하드웨어 디자인, AI 에코시스템 확장 소식 위주.",
+        "ai_prompt": refined_ai_prompt,
         "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
         "channels": get_initial_channels()
     }
@@ -91,16 +101,14 @@ def save_user_settings(user_id, settings):
     with open(get_user_file(user_id), "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
-# --- 2. 모델 및 유틸리티 (404 에러 방지 강화) ---
+# --- 2. 모델 및 유틸리티 ---
 def get_ai_model(api_key):
     if not api_key: return None
     try:
         genai.configure(api_key=api_key.strip())
-        # 404 에러 해결: 라이브러리 버전에 따라 다를 수 있는 모델명을 순차적으로 시도
         for model_name in ['gemini-1.5-flash', 'models/gemini-1.5-flash']:
             try:
                 model = genai.GenerativeModel(model_name)
-                # 모델이 존재하는지 간단히 테스트
                 return model
             except: continue
         return None
@@ -110,14 +118,13 @@ def get_ai_model(api_key):
 def show_analysis_popup(item, prompt, api_key):
     model = get_ai_model(api_key)
     if model:
-        with st.spinner("Samsung Strategy AI 분석 중..."):
+        with st.spinner("사용자 관심사 기반 전략 분석 중..."):
             try:
-                res = model.generate_content(f"{prompt}\n\n제목: {item['title_en']}")
+                res = model.generate_content(f"{prompt}\n\n분석 대상 기사 제목: {item['title_en']}")
                 st.markdown(f"### {item['title_ko']}")
                 st.info(res.text)
                 st.markdown(f"🔗 [기사 원문 읽기]({item['link']})")
-            except Exception as e:
-                st.error(f"분석 실패: {e}\n(API 키 또는 지역 제한을 확인하세요)")
+            except Exception as e: st.error(f"분석 실패: {e}")
     else: st.error("API Key를 확인해주세요.")
 
 @st.cache_data(ttl=3600)
@@ -126,7 +133,7 @@ def safe_translate(text):
     try: return GoogleTranslator(source='auto', target='ko').translate(text)
     except: return text
 
-# --- 3. 데이터 엔진 (프로그레스 바 포함) ---
+# --- 3. 데이터 엔진 ---
 def fetch_single_feed(args):
     cat, f, limit = args
     socket.setdefaulttimeout(15)
@@ -155,12 +162,10 @@ def get_all_news(settings):
     active_tasks = [(cat, f, limit) for cat, feeds in settings["channels"].items() 
                     if settings["category_active"].get(cat, True) for f in feeds if f["active"]]
     if not active_tasks: return []
-
     all_news = []
     pb = st.progress(0)
     st_text = st.empty()
     total = len(active_tasks)
-    
     with ThreadPoolExecutor(max_workers=15) as executor:
         futures = {executor.submit(fetch_single_feed, t): t for t in active_tasks}
         completed = 0
@@ -168,13 +173,12 @@ def get_all_news(settings):
             completed += 1
             all_news.extend(f.result())
             pb.progress(completed / total)
-            st_text.caption(f"📡 데이터 수집 중... {int((completed/total)*100)}% ({completed}/{total})")
-            
+            st_text.caption(f"📡 관심 분야 센싱 중... {int((completed/total)*100)}% ({completed}/{total})")
     st_text.empty()
     pb.empty()
     return sorted(all_news, key=lambda x: x['date_obj'], reverse=True)
 
-# --- 4. 사이드바 UI (위치 변경 적용) ---
+# --- 4. 사이드바 UI ---
 st.set_page_config(page_title="NGEPT Strategy Hub", layout="wide")
 
 with st.sidebar:
@@ -187,22 +191,22 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    # API 키 상태 표시 및 수정
+    # API 키 관리
     curr_key = st.session_state.settings.get("api_key", "").strip()
     if not st.session_state.get("editing_key", False) and curr_key:
-        st.success("✅ API Key 저장됨")
+        st.success("✅ API Key 인증됨")
         if st.button("🔑 키 수정"):
             st.session_state.editing_key = True
             st.rerun()
     else:
-        new_key = st.text_input("Gemini API Key 입력", value=curr_key, type="password")
+        new_key = st.text_input("Gemini API Key", value=curr_key, type="password")
         if st.button("💾 키 저장"):
             st.session_state.settings["api_key"] = new_key
             save_user_settings(u_id, st.session_state.settings)
             st.session_state.editing_key = False
             st.rerun()
 
-    # --- 1. 카테고리 설정 (위로 이동) ---
+    # --- 카테고리 설정 ---
     st.divider()
     st.subheader("📂 카테고리 및 채널")
     edit_ch = st.toggle("🛠️ 채널 편집 모드")
@@ -217,29 +221,29 @@ with st.sidebar:
                         st.session_state.settings["channels"][cat].pop(idx)
                         save_user_settings(u_id, st.session_state.settings); st.rerun()
 
-    # --- 2. 고급 설정 (아래로 이동) ---
+    # --- 고급 설정 ---
     st.divider()
     with st.expander("⚙️ 고급 전략 설정", expanded=False):
         st.session_state.settings["sensing_period"] = st.slider("수집 기간 (일)", 1, 30, st.session_state.settings["sensing_period"])
         st.session_state.settings["max_articles"] = st.selectbox("표시 기사 수", [10, 20, 30, 50, 100], index=2)
-        st.session_state.settings["filter_strength"] = st.slider("분석 필터 강도", 1, 5, st.session_state.settings.get("filter_strength", 3))
-        st.session_state.settings["ai_prompt"] = st.text_area("AI 가이드라인", value=st.session_state.settings["ai_prompt"], height=120)
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 전략 필터 가이드 (Few-Shot)", value=st.session_state.settings["ai_prompt"], height=200)
 
     if st.button("🚀 Apply & Sensing Start", use_container_width=True, type="primary"):
         save_user_settings(u_id, st.session_state.settings)
         st.cache_data.clear(); st.rerun()
 
-# --- 5. 메인 화면 ---
+# --- 5. 메인 렌더링 ---
 st.markdown("""
 <style>
     .main-header { padding: 40px 0; background: linear-gradient(135deg, #034EA2 0%, #007AFF 100%); border-radius: 0 0 30px 30px; color: white; text-align: center; margin-bottom: 30px; }
-    .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 25px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+    .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 25px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); transition: 0.3s; }
+    .insta-card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.1); }
     .card-img { width: 100%; height: 220px; object-fit: cover; }
     .card-content { padding: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""<div class="main-header"><h1>NGEPT Strategy Hub</h1><p>Future Experience Sensing & Opportunity Discovery</p></div>""", unsafe_allow_html=True)
+st.markdown("""<div class="main-header"><h1>NGEPT Strategy Hub</h1><p>User Interest Focused Sensing</p></div>""", unsafe_allow_html=True)
 
 raw_data = get_all_news(st.session_state.settings)
 
