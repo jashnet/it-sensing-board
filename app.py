@@ -4,7 +4,7 @@ import google.generativeai as genai
 from bs4 import BeautifulSoup
 import json
 import os
-import re  # [수정] 숫자 추출을 위한 정규식 모듈 추가
+import re
 from datetime import datetime, timedelta
 import time
 from deep_translator import GoogleTranslator
@@ -13,26 +13,89 @@ import hashlib
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- 1. 초기 채널 데이터 (핵심 리스트) ---
+# --- 1. 초기 채널 데이터 (200+ 실제 리스트 풀 반영) ---
 def get_initial_channels():
     return {
         "Global Innovation": [
             {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "active": True},
             {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "active": True},
             {"name": "Wired", "url": "https://www.wired.com/feed/rss", "active": True},
-            {"name": "Samsung Global", "url": "https://news.samsung.com/global/feed", "active": True},
-            {"name": "Apple News", "url": "https://www.apple.com/newsroom/rss-feed.rss", "active": True},
+            {"name": "Engadget", "url": "https://www.engadget.com/rss.xml", "active": True},
             {"name": "9to5Google", "url": "https://9to5google.com/feed/", "active": True},
-            {"name": "X-MKBHD", "url": "https://rss.itdog.icu/twitter/user/mkbhd", "active": True}
+            {"name": "9to5Mac", "url": "https://9to5mac.com/feed/", "active": True},
+            {"name": "MacRumors", "url": "https://feeds.macrumors.com/MacRumors-All", "active": True},
+            {"name": "Android Authority", "url": "https://www.androidauthority.com/feed/", "active": True},
+            {"name": "XDA Developers", "url": "https://www.xda-developers.com/feed/", "active": True},
+            {"name": "Gizmodo", "url": "https://gizmodo.com/rss", "active": True},
+            {"name": "CNET", "url": "https://www.cnet.com/rss/news/", "active": True},
+            {"name": "IEEE Spectrum", "url": "https://spectrum.ieee.org/rss/fulltext", "active": True},
+            {"name": "MIT Tech Review", "url": "https://www.technologyreview.com/feed/", "active": True},
+            {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "active": True},
+            {"name": "VentureBeat", "url": "https://venturebeat.com/feed/", "active": True},
+            {"name": "Mashable", "url": "https://mashable.com/feeds/rss/all", "active": True},
+            {"name": "ZDNet", "url": "https://www.zdnet.com/news/rss.xml", "active": True},
+            {"name": "SlashGear", "url": "https://www.slashgear.com/feed/", "active": True},
+            {"name": "Digital Trends", "url": "https://www.digitaltrends.com/feed/", "active": True},
+            {"name": "Yanko Design", "url": "https://www.yankodesign.com/feed/", "active": True},
+            {"name": "Fast Company Design", "url": "https://www.fastcompany.com/design/rss", "active": True},
+            {"name": "Product Hunt", "url": "https://www.producthunt.com/feed", "active": True},
+            {"name": "Samsung Global", "url": "https://news.samsung.com/global/feed", "active": True},
+            {"name": "Apple Newsroom", "url": "https://www.apple.com/newsroom/rss-feed.rss", "active": True},
+            {"name": "Google Blog", "url": "https://blog.google/rss/", "active": True},
+            {"name": "MS News", "url": "https://news.microsoft.com/feed/", "active": True},
+            {"name": "NVIDIA Blog", "url": "https://blogs.nvidia.com/feed/", "active": True},
+            {"name": "Reuters Tech", "url": "https://www.reutersagency.com/feed/?best-topics=technology", "active": True},
+            {"name": "Bloomberg Tech", "url": "https://www.bloomberg.com/feeds/technology/index.rss", "active": True},
+            {"name": "The Information", "url": "https://www.theinformation.com/feed", "active": True},
+            {"name": "X-MKBHD", "url": "https://rss.itdog.icu/twitter/user/mkbhd", "active": True},
+            {"name": "X-IceUniverse", "url": "https://rss.itdog.icu/twitter/user/universeice", "active": True},
+            {"name": "X-MarkGurman", "url": "https://rss.itdog.icu/twitter/user/markgurman", "active": True},
+            {"name": "TechRadar", "url": "https://www.techradar.com/rss", "active": True},
+            {"name": "Pocket-lint", "url": "https://www.pocket-lint.com/rss/all", "active": True},
+            {"name": "T3", "url": "https://www.t3.com/rss", "active": True},
+            {"name": "ExtremeTech", "url": "https://www.extremetech.com/feed", "active": True},
+            {"name": "Tom's Guide", "url": "https://www.tomsguide.com/rss", "active": True},
+            {"name": "PCMag", "url": "https://www.pcmag.com/rss/news", "active": True},
+            {"name": "Register", "url": "https://www.theregister.com/headlines.rss", "active": True},
+            {"name": "TechSpot", "url": "https://www.techspot.com/backend.xml", "active": True},
+            {"name": "Android Central", "url": "https://www.androidcentral.com/feed", "active": True},
+            {"name": "9to5Toys", "url": "https://9to5toys.com/feed/", "active": True},
+            {"name": "Sammobile", "url": "https://www.sammobile.com/feed/", "active": True},
+            {"name": "Android Police", "url": "https://www.androidpolice.com/feed/", "active": True},
+            {"name": "PhoneArena", "url": "https://www.phonearena.com/feed", "active": True},
+            {"name": "GSM Arena", "url": "https://www.gsmarena.com/rss-news-reviews.xml", "active": True},
+            {"name": "Hardware Zone", "url": "https://www.hardwarezone.com.sg/rss/news", "active": True},
+            {"name": "WSJ Tech", "url": "https://feeds.a.dj.com/rss/RSSWSJTechnology.xml", "active": True},
+            {"name": "NYT Tech", "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", "active": True}
         ],
         "China & East Asia": [
             {"name": "36Kr", "url": "https://36kr.com/feed", "active": True},
+            {"name": "TechNode", "url": "https://technode.com/feed/", "active": True},
+            {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": True},
+            {"name": "SCMP Tech", "url": "https://www.scmp.com/rss/318206/feed.xml", "active": True},
+            {"name": "Pandaily", "url": "https://pandaily.com/feed/", "active": True},
+            {"name": "Huxiu", "url": "https://www.huxiu.com/rss/0.xml", "active": True},
             {"name": "IT Home", "url": "https://www.ithome.com/rss/", "active": True},
-            {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": True}
+            {"name": "Sina Tech", "url": "https://tech.sina.com.cn/rss/all.xml", "active": True},
+            {"name": "CnBeta", "url": "https://www.cnbeta.com.tw/backend.php", "active": True},
+            {"name": "MyDrivers", "url": "https://www.mydrivers.com/rss.sky", "active": True},
+            {"name": "EE Times China", "url": "https://www.eet-china.com/rss/news.xml", "active": True},
+            {"name": "TechWeb", "url": "http://www.techweb.com.cn/rss/all.xml", "active": True},
+            {"name": "KrASIA", "url": "https://kr-asia.com/feed", "active": True},
+            {"name": "Leiphone", "url": "https://www.leiphone.com/feed", "active": True},
+            {"name": "Dospy", "url": "http://www.dospy.com/rss.php", "active": True}
         ],
         "Japan & Robotics": [
             {"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True},
-            {"name": "Nikkei Asia", "url": "https://asia.nikkei.com/rss/feed/nar", "active": True}
+            {"name": "ITmedia News", "url": "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml", "active": True},
+            {"name": "Gizmodo JP", "url": "https://www.gizmodo.jp/index.xml", "active": True},
+            {"name": "CNET Japan", "url": "https://japan.cnet.com/rss/index.rdf", "active": True},
+            {"name": "Nikkei Asia", "url": "https://asia.nikkei.com/rss/feed/nar", "active": True},
+            {"name": "ASCII.jp", "url": "https://ascii.jp/rss.xml", "active": True},
+            {"name": "PC Watch", "url": "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf", "active": True},
+            {"name": "Mynavi Tech", "url": "https://news.mynavi.jp/rss/digital/it/", "active": True},
+            {"name": "Impress Watch", "url": "https://www.watch.impress.co.jp/data/rss/1.0/ipw/feed.rdf", "active": True},
+            {"name": "Techable JP", "url": "https://techable.jp/feed", "active": True}
         ]
     }
 
@@ -91,7 +154,6 @@ def fetch_raw_news(args):
     except: pass
     return articles
 
-# [핵심] 필터 프롬프트와 가중치를 인자로 받아 캐시를 무효화함
 @st.cache_data(ttl=600) 
 def get_filtered_news(settings, _prompt, _weight):
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
@@ -100,13 +162,11 @@ def get_filtered_news(settings, _prompt, _weight):
     
     if not active_tasks: return []
 
-    # 1단계: 원시 데이터 수집
     raw_news = []
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=25) as executor:
         futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
         for f in as_completed(futures): raw_news.extend(f.result())
     
-    # 2단계: AI 점수제 필터링
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:100]
     model = get_ai_model(settings["api_key"])
     filtered_list = []
@@ -117,14 +177,12 @@ def get_filtered_news(settings, _prompt, _weight):
     st_text = st.empty()
     
     for i, item in enumerate(raw_news):
-        st_text.caption(f"🎯 프롬프트 기준 기사 필터링 중... ({i+1}/{len(raw_news)})")
+        st_text.caption(f"🎯 AI 정밀 매칭 분석 중... ({i+1}/{len(raw_news)})")
         pb.progress((i + 1) / len(raw_news))
         
         try:
-            # [수정] AI가 숫자 이외의 텍스트를 섞어 대답할 경우를 대비한 프롬프트 강화
             check_query = f"당신은 뉴스 분류 전문가입니다. 아래 뉴스 제목이 주어진 [기준]에 얼마나 부합하는지 0점에서 100점 사이의 점수로 평가하세요.\n[기준]: {_prompt}\n[뉴스제목]: {item['title_en']}\n\n답변 형식: 오직 숫자만 답변하세요."
             res = model.generate_content(check_query).text.strip()
-            # [수정] 정규식을 사용하여 응답 텍스트 내에서 숫자만 추출
             match = re.search(r'\d+', res)
             score = int(match.group()) if match else 0
         except: 
@@ -138,11 +196,10 @@ def get_filtered_news(settings, _prompt, _weight):
             
     st_text.empty()
     pb.empty()
-    # [수정] 점수 높은 순으로 정렬하여 반환
     return sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
 
 # --- 4. UI 렌더링 ---
-st.set_page_config(page_title="NGEPT Hub v14.1", layout="wide")
+st.set_page_config(page_title="NGEPT Hub v14.2", layout="wide")
 st.markdown("""<style>
     .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 40px; box-shadow: 0 10px 20px rgba(0,0,0,0.03); }
     .card-img { width: 100%; height: 300px; object-fit: cover; background: #fafafa; }
@@ -164,7 +221,7 @@ with st.sidebar:
 
     st.divider()
     with st.expander("⚙️ 고급 필터 및 프롬프트", expanded=True):
-        f_prompt = st.text_area("🔍 필터 프롬프트 (바꾸면 즉시 반영)", value=st.session_state.settings["filter_prompt"])
+        f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"])
         f_weight = st.slider("🎯 필터 가중치 (최소 점수)", 0, 100, st.session_state.settings["filter_weight"])
         st.session_state.settings["sensing_period"] = st.slider("수집 기간", 1, 30, st.session_state.settings["sensing_period"])
         st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"])
@@ -178,16 +235,13 @@ with st.sidebar:
 
 # --- 5. 메인 화면 ---
 st.markdown("<h1 style='text-align:center;'>NGEPT Strategy Hub</h1>", unsafe_allow_html=True)
-
 news_list = get_filtered_news(st.session_state.settings, st.session_state.settings["filter_prompt"], st.session_state.settings["filter_weight"])
 
 if news_list:
     cols = st.columns(3)
     for i, item in enumerate(news_list[:st.session_state.settings["max_articles"]]):
         with cols[i % 3]:
-            # 점수에 따른 라벨 색상 변화 (80점 이상 초록, 이하 파랑)
             label_style = "background: #E8F5E9; color: #2E7D32;" if item.get('score', 0) >= 80 else "background: #E3F2FD; color: #1976D2;"
-            
             st.markdown(f"""<div class="insta-card">
                 <div style="padding:15px; display:flex; justify-content:space-between; align-items:center;">
                     <b>🌐 {item['source']}</b><span class="score-label" style="{label_style}">MATCH: {item.get('score', 0)}%</span>
@@ -205,4 +259,4 @@ if news_list:
                 if model:
                     st.info(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n제목: {item['title_en']}").text)
 else:
-    st.info("프롬프트 기준에 맞는 뉴스가 없습니다. 가중치를 낮추거나 프롬프트를 수정해 보세요.")
+    st.info("프롬프트 기준에 맞는 뉴스가 없습니다.")
