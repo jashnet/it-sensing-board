@@ -12,7 +12,7 @@ import hashlib
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
-# --- 1. 초기 채널 데이터 설정 ---
+# --- 1. 초기 채널 데이터 (원복 및 통합) ---
 def get_initial_channels():
     return {
         "Global Innovation (23)": [
@@ -68,7 +68,7 @@ def get_initial_channels():
         ]
     }
 
-# --- 2. 사용자 설정 관리 로직 ---
+# --- 2. 설정 로직 ---
 def get_user_file(user_id):
     return f"nod_samsung_user_{user_id}.json"
 
@@ -77,44 +77,43 @@ def load_user_settings(user_id):
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
-    else:
-        settings = {
-            "api_key": "",
-            "sensing_period": 7,
-            "max_articles": 30,
-            "filter_strength": 3,
-            "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능, 스타트업의 신규 디바이스 시도에 해당하는 뉴스 위주.",
-            "ai_prompt": """삼성전자(Samsung) 기획자 관점에서 3단계 분석을 수행하라:
-a) Fact Summary: 핵심 사실 요약 (한국어로 자연스럽게)
-b) 3-Year Future Impact: 향후 3년 내 에코시스템 변화 예측
-c) Samsung Takeaway: 삼성 제품 혁신을 위한 시사점""",
-            "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
-            "channels": get_initial_channels()
-        }
-        return settings
+    return {
+        "api_key": "",
+        "sensing_period": 7,
+        "max_articles": 30,
+        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능 중심.",
+        "ai_prompt": "삼성전자 기획자 관점 분석: a)사실요약 b)3년후 영향 c)시사점",
+        "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
+        "channels": get_initial_channels()
+    }
 
 def save_user_settings(user_id, settings):
     with open(get_user_file(user_id), "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
-# --- 3. 유틸리티 함수 ---
+# --- 3. 모델 및 유틸리티 ---
+def get_ai_model(api_key):
+    if not api_key: return None
+    try:
+        genai.configure(api_key=api_key.strip())
+        # 404 에러 방지를 위한 순차적 모델 시도
+        for model_name in ['gemini-1.5-flash', 'gemini-pro', 'models/gemini-1.5-flash']:
+            try:
+                model = genai.GenerativeModel(model_name)
+                return model
+            except: continue
+        return None
+    except Exception as e:
+        st.error(f"AI 설정 오류: {e}")
+        return None
+
 @st.cache_data(ttl=3600)
 def safe_translate(text):
     if not text: return ""
     try: return GoogleTranslator(source='auto', target='ko').translate(text)
     except: return text
 
-def get_ai_model(api_key):
-    if not api_key: return None
-    try:
-        genai.configure(api_key=api_key.strip())
-        # 모델명을 'models/gemini-1.5-flash'로 명시하여 404 에러 방지
-        return genai.GenerativeModel('models/gemini-1.5-flash')
-    except Exception as e:
-        st.error(f"모델 설정 오류: {e}")
-        return None
-
-# --- 4. 데이터 엔진 (병렬 수집) ---
+# --- 4. 데이터 수집 엔진 ---
 def fetch_single_feed(args):
     cat, f, limit = args
     socket.setdefaulttimeout(15)
@@ -128,96 +127,78 @@ def fetch_single_feed(args):
                 if p_date < limit: continue
                 articles.append({
                     "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
-                    "title_en": entry.title,
-                    "link": entry.link,
-                    "source": f["name"],
-                    "category": cat,
-                    "date_obj": p_date,
-                    "summary_raw": entry.get("summary", "")
+                    "title_en": entry.title, "link": entry.link,
+                    "source": f["name"], "category": cat, "date_obj": p_date
                 })
     except: pass
     return articles
 
 @st.cache_data(ttl=3600)
 def get_all_news(settings):
-    all_news = []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     active_tasks = [(cat, f, limit) for cat, feeds in settings["channels"].items() 
                     if settings["category_active"].get(cat, True) for f in feeds if f["active"]]
-    
     if not active_tasks: return []
-    
     with ThreadPoolExecutor(max_workers=12) as executor:
         results = list(executor.map(fetch_single_feed, active_tasks))
-    
-    for res in results: all_news.extend(res)
+    all_news = [item for sublist in results for item in sublist]
     return sorted(all_news, key=lambda x: x['date_obj'], reverse=True)
 
-# --- 5. 사이드바 및 UI 구성 ---
-st.set_page_config(page_title="NOD Strategy Hub v9.6", layout="wide")
+# --- 5. 사이드바 UI ---
+st.set_page_config(page_title="NOD Strategy Hub v9.7", layout="wide")
 
 with st.sidebar:
     st.title("👤 User Profile")
-    user_id = st.radio("사용자 선택", ["1", "2", "3", "4"], horizontal=True)
-    
-    if "current_user" not in st.session_state or st.session_state.current_user != user_id:
-        st.session_state.current_user = user_id
-        st.session_state.settings = load_user_settings(user_id)
+    u_id = st.radio("사용자", ["1", "2", "3", "4"], horizontal=True)
+    if "current_user" not in st.session_state or st.session_state.current_user != u_id:
+        st.session_state.current_user = u_id
+        st.session_state.settings = load_user_settings(u_id)
         st.rerun()
 
     st.divider()
     st.subheader("🛡️ NOD Controller")
-    
-    new_api_key = st.text_input("Gemini API Key", value=st.session_state.settings.get("api_key", ""), type="password")
-    if new_api_key != st.session_state.settings["api_key"]:
-        st.session_state.settings["api_key"] = new_api_key
-        save_user_settings(user_id, st.session_state.settings)
-        st.success("API Key Updated!")
+    new_api = st.text_input("Gemini API Key", value=st.session_state.settings.get("api_key", ""), type="password")
+    if new_api != st.session_state.settings["api_key"]:
+        st.session_state.settings["api_key"] = new_api
+        save_user_settings(u_id, st.session_state.settings)
 
     st.divider()
-    st.subheader("🌐 채널 관리")
-    edit_mode = st.toggle("🛠️ 편집 모드 활성화")
-
+    edit_mode = st.toggle("🛠️ 채널 편집 모드 활성화")
     for cat in list(st.session_state.settings["channels"].keys()):
         st.session_state.settings["category_active"][cat] = st.toggle(cat, value=st.session_state.settings["category_active"].get(cat, True))
         if st.session_state.settings["category_active"][cat]:
-            with st.expander(f"{cat} 리스트"):
+            with st.expander(f"{cat} 관리"):
                 for idx, f in enumerate(st.session_state.settings["channels"][cat]):
-                    col_ch, col_del = st.columns([4, 1])
-                    f["active"] = col_ch.checkbox(f["name"], value=f.get("active", True), key=f"side_{user_id}_{cat}_{idx}")
-                    if edit_mode and col_del.button("❌", key=f"del_{user_id}_{cat}_{idx}"):
+                    c_ch, c_del = st.columns([4, 1])
+                    f["active"] = c_ch.checkbox(f["name"], value=f.get("active", True), key=f"cb_{u_id}_{cat}_{idx}")
+                    if edit_mode and c_del.button("❌", key=f"del_{u_id}_{cat}_{idx}"):
                         st.session_state.settings["channels"][cat].pop(idx)
-                        save_user_settings(user_id, st.session_state.settings)
-                        st.rerun()
+                        save_user_settings(u_id, st.session_state.settings); st.rerun()
                 if edit_mode:
-                    with st.form(f"add_{cat}_{user_id}"):
-                        ch_n = st.text_input("채널명")
-                        ch_u = st.text_input("RSS URL")
-                        if st.form_submit_button("추가"):
-                            if ch_n and ch_u:
-                                st.session_state.settings["channels"][cat].append({"name": ch_n, "url": ch_u, "active": True})
-                                save_user_settings(user_id, st.session_state.settings)
-                                st.rerun()
+                    with st.form(f"add_{cat}"):
+                        n, u = st.text_input("채널명"), st.text_input("URL")
+                        if st.form_submit_button("추가") and n and u:
+                            st.session_state.settings["channels"][cat].append({"name": n, "url": u, "active": True})
+                            save_user_settings(u_id, st.session_state.settings); st.rerun()
 
     st.divider()
     with st.expander("⚙️ 고급 설정"):
-        st.session_state.settings["sensing_period"] = st.slider("수집 기간", 1, 30, st.session_state.settings["sensing_period"])
-        st.session_state.settings["max_articles"] = st.selectbox("표시 기사", [10, 20, 30, 50, 100], index=2)
-        st.session_state.settings["ai_prompt"] = st.text_area("AI 분석 가이드", value=st.session_state.settings["ai_prompt"], height=200)
+        st.session_state.settings["sensing_period"] = st.slider("기간", 1, 30, st.session_state.settings["sensing_period"])
+        st.session_state.settings["max_articles"] = st.selectbox("개수", [10, 20, 30, 50], index=2)
+        st.session_state.settings["ai_prompt"] = st.text_area("AI 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=150)
 
-    if st.button("🚀 Apply & Start", use_container_width=True, type="primary"):
-        save_user_settings(user_id, st.session_state.settings)
-        st.cache_data.clear()
-        st.rerun()
+    if st.button("🚀 Apply & Sensing", use_container_width=True, type="primary"):
+        save_user_settings(u_id, st.session_state.settings)
+        st.cache_data.clear(); st.rerun()
 
 # --- 6. 메인 화면 ---
 st.markdown("<style>.card { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }</style>", unsafe_allow_html=True)
-st.title("🚀 NGEPT Strategy Sensing Hub")
+st.title("🚀 NGEPT Strategy Hub")
 
 news_data = get_all_news(st.session_state.settings)
 
 if news_data:
-    st.subheader("🌟 Strategic Top Picks")
+    st.subheader("🌟 Top Picks")
     cols = st.columns(3)
     for i, item in enumerate(news_data[:6]):
         with cols[i % 3]:
@@ -226,20 +207,15 @@ if news_data:
                 <h4>{safe_translate(item['title_en'])}</h4>
                 <p style="color:gray; font-size:0.8rem;">{item['source']} | {item['date_obj'].strftime('%Y-%m-%d')}</p>
             </div>""", unsafe_allow_html=True)
-            
             if st.button("🔍 Deep Analysis", key=f"btn_{item['id']}"):
-                api_key = st.session_state.settings.get("api_key", "").strip()
-                if not api_key:
-                    st.error("API Key를 입력해주세요.")
-                else:
-                    model = get_ai_model(api_key)
-                    if model:
-                        with st.spinner("AI 분석 중..."):
-                            try:
-                                res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
-                                st.info(res.text)
-                            except Exception as e:
-                                st.error(f"분석 오류: {e}")
+                model = get_ai_model(st.session_state.settings["api_key"])
+                if model:
+                    with st.spinner("AI 분석 중..."):
+                        try:
+                            res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
+                            st.info(res.text)
+                        except Exception as e: st.error(f"분석 실패: {e}")
+                else: st.error("API 키 확인 필요 (AI Studio에서 발급 권장)")
 
     st.divider()
     st.subheader("📋 실시간 뉴스 스트림")
@@ -252,5 +228,4 @@ if news_data:
             if st.button("Quick View", key=f"q_{item['id']}"):
                 st.write(safe_translate(item['title_en']))
         st.markdown("---")
-else:
-    st.info("뉴스를 수집 중이거나 데이터가 없습니다.")
+else: st.info("수집된 데이터가 없습니다.")
