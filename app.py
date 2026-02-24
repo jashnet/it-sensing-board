@@ -12,7 +12,7 @@ import hashlib
 import socket
 from concurrent.futures import ThreadPoolExecutor
 
-# --- 1. 초기 채널 데이터 (원복) ---
+# --- 1. 초기 채널 데이터 ---
 def get_initial_channels():
     return {
         "Global Innovation (23)": [
@@ -23,7 +23,7 @@ def get_initial_channels():
             {"name": "Gizmodo", "url": "https://gizmodo.com/rss", "active": True},
             {"name": "Product Hunt", "url": "https://www.producthunt.com/feed", "active": True},
             {"name": "Yanko Design", "url": "https://www.yankodesign.com/feed/", "active": True},
-            {"name": "Fast Company Design", "url": "https://www.fastcompany.com/design/rss", "active": True},
+            {"name": "Fast Company Design", "status": "active", "url": "https://www.fastcompany.com/design/rss", "active": True},
             {"name": "IEEE Spectrum", "url": "https://spectrum.ieee.org/rss/fulltext", "active": True},
             {"name": "MIT Tech Review", "url": "https://www.technologyreview.com/feed/", "active": True},
             {"name": "9to5Google", "url": "https://9to5google.com/feed/", "active": True},
@@ -68,7 +68,7 @@ def get_initial_channels():
         ]
     }
 
-# --- 2. 설정 관리 ---
+# --- 2. 설정 로직 ---
 def get_user_file(user_id):
     return f"nod_samsung_user_{user_id}.json"
 
@@ -81,8 +81,8 @@ def load_user_settings(user_id):
         "api_key": "",
         "sensing_period": 7,
         "max_articles": 30,
-        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능 위주.",
-        "ai_prompt": "삼성전자 기획자 관점 3단계 분석: a)요약 b)3년후 영향 c)시사점",
+        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능 중심.",
+        "ai_prompt": "삼성전자 기획자 관점 분석: a)사실요약 b)3년후 영향 c)시사점",
         "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
         "channels": get_initial_channels()
     }
@@ -91,32 +91,23 @@ def save_user_settings(user_id, settings):
     with open(get_user_file(user_id), "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
-# --- 3. 모델 동적 로드 및 유틸리티 ---
+# --- 3. 모델 및 유틸리티 ---
 def get_ai_model(api_key):
     if not api_key: return None
     try:
         genai.configure(api_key=api_key.strip())
+        # 차단된 키인지 확인하기 위해 모델 리스트 호출 시도
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # [해결책] 사용 가능한 모델 목록을 조회하여 적합한 모델을 자동으로 선택
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        # 선호 모델 순위
-        preferred = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']
-        
-        for p in preferred:
-            if p in available_models:
-                return genai.GenerativeModel(p)
-        
-        # 만약 선호 모델이 목록에 없으면 가능한 첫 번째 모델 사용
-        if available_models:
-            return genai.GenerativeModel(available_models[0])
-            
-        return None
+        for preferred in ['models/gemini-1.5-flash', 'models/gemini-pro']:
+            if preferred in models:
+                return genai.GenerativeModel(preferred)
+        return genai.GenerativeModel(models[0]) if models else None
     except Exception as e:
-        st.error(f"AI 모델 목록 조회 실패: {e}")
+        if "leaked" in str(e).lower():
+            st.error("❌ 현재 API 키가 노출되어 차단되었습니다. Google AI Studio에서 새 키를 발급받으세요.")
+        else:
+            st.error(f"AI 설정 오류: {e}")
         return None
 
 @st.cache_data(ttl=3600)
@@ -157,7 +148,7 @@ def get_all_news(settings):
     return sorted(all_news, key=lambda x: x['date_obj'], reverse=True)
 
 # --- 5. 사이드바 UI ---
-st.set_page_config(page_title="NOD Strategy Hub v9.8", layout="wide")
+st.set_page_config(page_title="NOD Strategy Hub v9.9", layout="wide")
 
 with st.sidebar:
     st.title("👤 User Profile")
@@ -169,7 +160,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("🛡️ NOD Controller")
-    new_api = st.text_input("Gemini API Key", value=st.session_state.settings.get("api_key", ""), type="password")
+    new_api = st.text_input("New Gemini API Key", value=st.session_state.settings.get("api_key", ""), type="password", help="Leaked 키 대신 새로 발급받은 키를 넣으세요.")
     if new_api != st.session_state.settings["api_key"]:
         st.session_state.settings["api_key"] = new_api
         save_user_settings(u_id, st.session_state.settings)
@@ -192,12 +183,6 @@ with st.sidebar:
                         if st.form_submit_button("추가") and n and u:
                             st.session_state.settings["channels"][cat].append({"name": n, "url": u, "active": True})
                             save_user_settings(u_id, st.session_state.settings); st.rerun()
-
-    st.divider()
-    with st.expander("⚙️ 고급 설정"):
-        st.session_state.settings["sensing_period"] = st.slider("기간", 1, 30, st.session_state.settings["sensing_period"])
-        st.session_state.settings["max_articles"] = st.selectbox("개수", [10, 20, 30, 50], index=2)
-        st.session_state.settings["ai_prompt"] = st.text_area("AI 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=150)
 
     if st.button("🚀 Apply & Sensing", use_container_width=True, type="primary"):
         save_user_settings(u_id, st.session_state.settings)
@@ -222,12 +207,12 @@ if news_data:
             if st.button("🔍 Deep Analysis", key=f"btn_{item['id']}"):
                 model = get_ai_model(st.session_state.settings["api_key"])
                 if model:
-                    with st.spinner(f"AI 분석 중... ({model.model_name})"):
+                    with st.spinner("AI 분석 중..."):
                         try:
                             res = model.generate_content(f"{st.session_state.settings['ai_prompt']}\n내용: {item['title_en']}")
                             st.info(res.text)
                         except Exception as e: st.error(f"분석 실패: {e}")
-                else: st.error("접근 가능한 Gemini 모델이 없습니다. API 키 권한을 확인하세요.")
+                else: st.error("차단되지 않은 유효한 API 키가 필요합니다.")
 
     st.divider()
     st.subheader("📋 실시간 뉴스 스트림")
