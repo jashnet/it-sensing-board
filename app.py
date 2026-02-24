@@ -78,11 +78,11 @@ def load_user_settings(user_id):
         with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
     return {
-        "api_key": "AIzaSyBpko5khWacamTzhI6lsA70LyjCCNf06aA",
+        "api_key": "",
         "sensing_period": 7,
         "max_articles": 30,
         "filter_strength": 3,
-        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능, 스타트업의 신규 디바이스 시도에 해당하는 뉴스 위주.",
+        "filter_prompt": "혁신적 인터페이스, 파괴적 AI 기능 위주.",
         "ai_prompt": "삼성전자(Samsung) 기획자 관점에서 3단계 분석을 수행하라:\na) Fact Summary: 핵심 요약\nb) 3-Year Future Impact: 에코시스템 변화\nc) Samsung Takeaway: 혁신 시사점",
         "category_active": {"Global Innovation (23)": True, "China AI/HW (11)": True, "Japan Innovation (11)": True},
         "channels": get_initial_channels()
@@ -92,7 +92,7 @@ def save_user_settings(user_id, settings):
     with open(get_user_file(user_id), "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
-# --- 3. 모델 및 유틸리티 ---
+# --- 3. 모델 및 팝업 ---
 def get_ai_model(api_key):
     try:
         genai.configure(api_key=api_key.strip())
@@ -103,17 +103,14 @@ def get_ai_model(api_key):
 def show_analysis_popup(item, prompt, api_key):
     model = get_ai_model(api_key)
     if model:
-        with st.spinner("Samsung Strategy AI 분석 중..."):
+        with st.spinner("AI 전략 분석 중..."):
             try:
                 res = model.generate_content(f"{prompt}\n\n제목: {item['title_en']}")
                 st.markdown(f"### {item['title_ko']}")
-                st.markdown("---")
                 st.info(res.text)
-                st.markdown(f"🔗 [기사 원문 보기]({item['link']})")
-            except Exception as e:
-                st.error(f"분석 실패: {e}")
-    else:
-        st.error("API Key를 확인해주세요.")
+                st.markdown(f"🔗 [기사 원문 읽기]({item['link']})")
+            except Exception as e: st.error(f"분석 실패: {e}")
+    else: st.error("API Key가 유효하지 않습니다.")
 
 @st.cache_data(ttl=3600)
 def safe_translate(text):
@@ -121,7 +118,7 @@ def safe_translate(text):
     try: return GoogleTranslator(source='auto', target='ko').translate(text)
     except: return text
 
-# --- 4. 데이터 엔진 (프로그레스 바 적용) ---
+# --- 4. 데이터 엔진 ---
 def fetch_single_feed(args):
     cat, f, limit = args
     socket.setdefaulttimeout(15)
@@ -137,13 +134,9 @@ def fetch_single_feed(args):
                 summary = BeautifulSoup(raw_sum, "html.parser").get_text()[:150] if raw_sum else ""
                 articles.append({
                     "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
-                    "title_en": entry.title,
-                    "title_ko": safe_translate(entry.title),
-                    "summary": safe_translate(summary),
-                    "link": entry.link,
-                    "source": f["name"],
-                    "category": cat,
-                    "date_obj": p_date,
+                    "title_en": entry.title, "title_ko": safe_translate(entry.title),
+                    "summary": safe_translate(summary), "link": entry.link,
+                    "source": f["name"], "category": cat, "date_obj": p_date,
                     "date": p_date.strftime("%Y.%m.%d")
                 })
     except: pass
@@ -153,67 +146,76 @@ def get_all_news(settings):
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     active_tasks = [(cat, f, limit) for cat, feeds in settings["channels"].items() 
                     if settings["category_active"].get(cat, True) for f in feeds if f["active"]]
-    
     if not active_tasks: return []
 
     all_news = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    pb = st.progress(0)
+    st_text = st.empty()
     total = len(active_tasks)
     
     with ThreadPoolExecutor(max_workers=15) as executor:
-        futures = {executor.submit(fetch_single_feed, task): task for task in active_tasks}
+        futures = {executor.submit(fetch_single_feed, t): t for t in active_tasks}
         completed = 0
-        for future in as_completed(futures):
+        for f in as_completed(futures):
             completed += 1
-            res = future.result()
-            all_news.extend(res)
-            # 프로그레스바 업데이트
-            percent = int((completed / total) * 100)
-            status_text.caption(f"📡 데이터 센싱 중... {percent}% ({completed}/{total} 채널)")
-            progress_bar.progress(completed / total)
+            all_news.extend(f.result())
+            pb.progress(completed / total)
+            st_text.caption(f"📡 센싱 중... {int((completed/total)*100)}% ({completed}/{total})")
             
-    status_text.empty()
-    progress_bar.empty()
+    st_text.empty()
+    pb.empty()
     return sorted(all_news, key=lambda x: x['date_obj'], reverse=True)
 
-# --- 5. UI 및 사이드바 ---
+# --- 5. UI 및 사이드바 (구조 변경) ---
 st.set_page_config(page_title="NGEPT Strategy Hub", layout="wide")
 
 st.markdown("""
 <style>
-    .main-header { padding: 50px 0; background: linear-gradient(135deg, #034EA2 0%, #007AFF 100%); border-radius: 0 0 40px 40px; color: white; text-align: center; margin-bottom: 40px; }
-    .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 25px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
-    .card-header { padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; background: #fafafa; }
-    .source-badge { background: #034EA2; color: white; padding: 3px 10px; border-radius: 50px; font-size: 0.7rem; font-weight: 700; }
-    .card-img { width: 100%; height: 250px; object-fit: cover; }
+    .main-header { padding: 40px 0; background: linear-gradient(135deg, #034EA2 0%, #007AFF 100%); border-radius: 0 0 30px 30px; color: white; text-align: center; margin-bottom: 30px; }
+    .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 25px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+    .card-img { width: 100%; height: 220px; object-fit: cover; }
     .card-content { padding: 20px; }
-    .card-title-ko { font-size: 1.15rem; font-weight: 700; color: #1a1a1a; margin-bottom: 5px; }
-    .card-title-en { font-size: 0.8rem; color: #999; font-style: italic; margin-bottom: 15px; display: block; }
-    .card-summary { font-size: 0.9rem; color: #555; line-height: 1.5; margin-bottom: 15px; }
-    .card-footer { padding: 15px 20px; border-top: 1px solid #f5f5f5; display: flex; justify-content: space-between; align-items: center; }
-    .link-btn { text-decoration: none; color: #007AFF; font-size: 0.85rem; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
 with st.sidebar:
-    st.header("👤 Strategy Controller")
+    st.title("👤 Strategy Hub")
     u_id = st.radio("사용자", ["1", "2", "3", "4"], horizontal=True)
     if "current_user" not in st.session_state or st.session_state.current_user != u_id:
         st.session_state.current_user = u_id
         st.session_state.settings = load_user_settings(u_id)
+        st.session_state.editing_key = False
         st.rerun()
 
+    # --- API Key 관리 (지능형 표시) ---
     st.divider()
-    st.session_state.settings["api_key"] = st.text_input("Gemini API Key", value=st.session_state.settings["api_key"], type="password")
-    
-    with st.expander("⚙️ 고급 설정", expanded=True):
+    curr_key = st.session_state.settings.get("api_key", "").strip()
+    if not st.session_state.get("editing_key", False) and curr_key:
+        st.success("✅ API Key 인증됨")
+        if st.button("🔑 키 수정"):
+            st.session_state.editing_key = True
+            st.rerun()
+    else:
+        new_key = st.text_input("Gemini API Key 입력", value=curr_key, type="password")
+        if st.button("💾 키 저장"):
+            st.session_state.settings["api_key"] = new_key
+            save_user_settings(u_id, st.session_state.settings)
+            st.session_state.editing_key = False
+            st.success("저장되었습니다!")
+            st.rerun()
+
+    # --- 고급 설정 (위치 변경) ---
+    st.divider()
+    with st.expander("⚙️ 고급 전략 설정", expanded=True):
         st.session_state.settings["sensing_period"] = st.slider("수집 기간 (일)", 1, 30, st.session_state.settings["sensing_period"])
         st.session_state.settings["max_articles"] = st.selectbox("표시 기사 수", [10, 20, 30, 50, 100], index=2)
-        st.session_state.settings["filter_prompt"] = st.text_area("필터 기준", value=st.session_state.settings["filter_prompt"])
-        st.session_state.settings["ai_prompt"] = st.text_area("AI 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=150)
-    
-    st.subheader("📂 카테고리 관리")
+        st.session_state.settings["filter_strength"] = st.slider("필터 강도 (AI Deep)", 1, 5, st.session_state.settings.get("filter_strength", 3))
+        st.session_state.settings["ai_prompt"] = st.text_area("분석 가이드라인", value=st.session_state.settings["ai_prompt"], height=120)
+
+    # --- 카테고리 필터 (위치 변경) ---
+    st.divider()
+    st.subheader("📂 카테고리 및 채널")
+    edit_ch = st.toggle("🛠️ 채널 편집 모드")
     for cat in list(st.session_state.settings["channels"].keys()):
         st.session_state.settings["category_active"][cat] = st.toggle(cat, value=st.session_state.settings["category_active"].get(cat, True))
         if st.session_state.settings["category_active"][cat]:
@@ -221,11 +223,11 @@ with st.sidebar:
                 for idx, f in enumerate(st.session_state.settings["channels"][cat]):
                     c1, c2 = st.columns([4, 1])
                     f["active"] = c1.checkbox(f["name"], value=f.get("active", True), key=f"side_cb_{u_id}_{cat}_{idx}")
-                    if c2.button("❌", key=f"side_del_{u_id}_{cat}_{idx}"):
+                    if edit_ch and c2.button("❌", key=f"side_del_{u_id}_{cat}_{idx}"):
                         st.session_state.settings["channels"][cat].pop(idx)
                         save_user_settings(u_id, st.session_state.settings); st.rerun()
 
-    if st.button("🚀 Apply & Sensing", use_container_width=True, type="primary"):
+    if st.button("🚀 Apply & Sensing Start", use_container_width=True, type="primary"):
         save_user_settings(u_id, st.session_state.settings)
         st.cache_data.clear(); st.rerun()
 
@@ -236,55 +238,47 @@ raw_data = get_all_news(st.session_state.settings)
 
 if raw_data:
     st.subheader("🌟 Strategic Top Picks")
-    top_6 = raw_data[:6]
     cols = st.columns(3)
-    for i, item in enumerate(top_6):
+    for i, item in enumerate(raw_data[:6]):
         with cols[i % 3]:
             st.markdown(f"""
             <div class="insta-card">
-                <div class="card-header">
-                    <span class="source-badge">{item['source']}</span>
-                    <span style="font-size:0.75rem; color:#888;">{item['date']}</span>
+                <div style="padding:10px 20px; display:flex; justify-content:space-between; font-size:0.75rem; color:#888;">
+                    <b>{item['source']}</b><span>{item['date']}</span>
                 </div>
                 <img src="https://s.wordpress.com/mshots/v1/{item['link']}?w=500" class="card-img">
                 <div class="card-content">
-                    <div class="card-title-ko">{item['title_ko']}</div>
-                    <span class="card-title-en">{item['title_en']}</span>
-                    <div class="card-summary">{item['summary']}...</div>
-                </div>
-                <div class="card-footer">
-                    <a href="{item['link']}" target="_blank" class="link-btn">🔗 원본 기사 읽기</a>
+                    <div style="font-weight:700; font-size:1.1rem; margin-bottom:5px;">{item['title_ko']}</div>
+                    <div style="font-size:0.8rem; color:#999; margin-bottom:12px; font-style:italic;">{item['title_en']}</div>
+                    <div style="font-size:0.85rem; color:#555; line-height:1.5;">{item['summary']}...</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            if st.button("🔍 Deep Analysis", key=f"btn_pop_{item['id']}", use_container_width=True):
+            c_btn1, c_btn2 = st.columns(2)
+            if c_btn1.button("🔍 Deep Analysis", key=f"p_{item['id']}", use_container_width=True):
                 show_analysis_popup(item, st.session_state.settings["ai_prompt"], st.session_state.settings["api_key"])
+            c_btn2.link_button("🔗 원문 보기", item['link'], use_container_width=True)
 
     st.divider()
-    
-    # 정렬 및 필터 영역
     st.subheader("📋 실시간 센싱 스트림")
+    # (필터 및 정렬 로직 생략 없이 유지)
     sc1, sc2, sc3 = st.columns([2, 2, 2])
     with sc1: sort_v = st.selectbox("📅 정렬", ["최신순", "과거순"])
-    with sc2: cat_v = st.multiselect("📂 카테고리 필터", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
-    with sc3: search_v = st.text_input("🔍 검색어", "")
+    with sc2: cat_v = st.multiselect("📂 필터", list(st.session_state.settings["channels"].keys()), default=list(st.session_state.settings["channels"].keys()))
+    with sc3: search_v = st.text_input("🔍 검색", "")
 
     stream_data = [d for d in raw_data if d["category"] in cat_v]
-    if search_v: stream_data = [d for d in stream_data if search_v.lower() in d["title_ko"].lower() or search_key.lower() in d["title_en"].lower()]
+    if search_v: stream_data = [d for d in stream_data if search_v.lower() in d["title_ko"].lower()]
     if sort_v == "최신순": stream_data.sort(key=lambda x: x["date_obj"], reverse=True)
     else: stream_data.sort(key=lambda x: x["date_obj"])
 
     for item in stream_data[:st.session_state.settings["max_articles"]]:
-        c_img, c_txt = st.columns([1, 3])
-        with c_img: st.image(f"https://s.wordpress.com/mshots/v1/{item['link']}?w=300", use_container_width=True)
+        c_img, c_txt = st.columns([1, 4])
+        with c_img: st.image(f"https://s.wordpress.com/mshots/v1/{item['link']}?w=300")
         with c_txt:
-            st.markdown(f"**[{item['source']}]** {item['date']}")
-            st.markdown(f"### {item['title_ko']}")
+            st.markdown(f"**[{item['source']}]** {item['date']} | {item['category']}")
+            st.markdown(f"#### {item['title_ko']}")
             st.write(item['summary'] + "...")
-            col_b1, col_b2 = st.columns([1, 1])
-            if col_b1.button("Deep Analysis", key=f"q_ana_{item['id']}"):
+            if st.button("Quick View", key=f"q_{item['id']}"):
                 show_analysis_popup(item, st.session_state.settings["ai_prompt"], st.session_state.settings["api_key"])
-            col_b2.markdown(f"<div style='padding-top:10px;'><a href='{item['link']}' target='_blank' style='text-decoration:none; color:#007AFF; font-weight:bold;'>🔗 원본 링크</a></div>", unsafe_allow_html=True)
         st.markdown("---")
-else:
-    st.info("데이터가 없습니다. 설정을 확인해 주세요.")
