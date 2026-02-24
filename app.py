@@ -11,7 +11,7 @@ import requests
 import hashlib
 import socket
 
-# --- 1. 기본 채널 데이터베이스 프리셋 (최초 실행 시 생성용) ---
+# --- 1. 대규모 채널 데이터베이스 프리셋 (최초 실행 시 사용자별 DB 생성용) ---
 def get_initial_db_preset():
     return {
         "Global Innovation (50+)": [
@@ -22,34 +22,30 @@ def get_initial_db_preset():
             {"name": "Gizmodo", "url": "https://gizmodo.com/rss", "active": True},
             {"name": "MIT Tech Review", "url": "https://www.technologyreview.com/feed/", "active": True},
             {"name": "9to5Google", "url": "https://9to5google.com/feed/", "active": True},
-            {"name": "Android Authority", "url": "https://www.androidauthority.com/feed/", "active": True},
-            {"name": "MacRumors", "url": "https://feeds.macrumors.com/MacRumors-All", "active": True},
-            {"name": "Product Hunt", "url": "https://www.producthunt.com/feed", "active": True}
-            # ... (나머지 40여개는 DB 파일 생성 시 자동으로 확장 가능하도록 설계)
+            {"name": "Android Authority", "url": "https://www.androidauthority.com/feed/", "active": True}
+            # (나머지 채널들은 사용자가 앱에서 직접 추가 가능)
         ],
-        "China Innovation (20+)": [
+        "China AI/HW (20+)": [
             {"name": "36Kr (CN)", "url": "https://36kr.com/feed", "active": True},
-            {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": True},
-            {"name": "SCMP Tech", "url": "https://www.scmp.com/rss/318206/feed.xml", "active": True}
+            {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": True}
         ],
         "Japan Innovation (20+)": [
             {"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True},
-            {"name": "Gizmodo JP", "url": "https://www.gizmodo.jp/index.xml", "active": True}
+            {"name": "ITmedia News", "url": "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml", "active": True}
         ],
-        "X/Threads Signals (40)": [
+        "X/Threads Signals (40+)": [
             {"name": "Mark Gurman", "url": "https://rss.app/feeds/tVjKqK6L8WzZ7U0B.xml", "active": True},
             {"name": "Ice Universe", "url": "https://rss.app/feeds/tw_iceuniverse.xml", "active": True}
         ]
     }
 
-# --- 2. 사용자별 독립 DB 관리 및 세션 초기화 ---
+# --- 2. 사용자별 독립 DB 로드/저장 ---
 def load_user_db(user_id):
     path = f"nod_user_{user_id}_db.json"
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        # 최초 실행 시 기본값 생성
         new_db = {
             "settings": {
                 "api_key": "AIzaSyCW7kwkCqCSN-usKFG9gwcPzYlHwtQW_DQ",
@@ -68,14 +64,14 @@ def save_user_db(user_id, data):
     with open(f"nod_user_{user_id}_db.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# --- 3. 데이터 엔진 ---
+# --- 3. 데이터 및 AI 엔진 ---
 def natural_translate(text):
     if not text: return ""
     try: return GoogleTranslator(source='auto', target='ko').translate(text)
     except: return text
 
 def get_ai_model():
-    if "db" not in st.session_state: return None
+    if "db" not in st.session_state or "settings" not in st.session_state.db: return None
     api_key = st.session_state.db["settings"].get("api_key", "").strip()
     if not api_key: return None
     try:
@@ -86,7 +82,7 @@ def get_ai_model():
 def fetch_sensing_data(user_id):
     db = st.session_state.db
     all_news = []
-    limit = datetime.now() - timedelta(days=db["settings"]["sensing_period"])
+    limit = datetime.now() - timedelta(days=db["settings"].get("sensing_period", 7))
     model = get_ai_model()
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/110.0.0.0 Safari/537.36"
     
@@ -99,7 +95,7 @@ def fetch_sensing_data(user_id):
     
     prog = st.progress(0); stat = st.empty()
     for i, (cat, f) in enumerate(active_feeds):
-        stat.caption(f"📡 {cat} - {f['name']} 분석 중... ({int((i+1)/len(active_feeds)*100)}%)")
+        stat.caption(f"📡 {cat} - {f['name']} 센싱 중... ({int((i+1)/len(active_feeds)*100)}%)")
         prog.progress((i+1)/len(active_feeds))
         try:
             d = feedparser.parse(f["url"], agent=USER_AGENT)
@@ -110,7 +106,7 @@ def fetch_sensing_data(user_id):
                     
                     relevance_score = 5
                     if model:
-                        res = model.generate_content(f"뉴스: {entry.title}\n혁신적이면 'True,점수(1-10)'로 답해.").text.strip().lower()
+                        res = model.generate_content(f"뉴스: {entry.title}\n혁신적이면 'True,점수'로 답해.").text.strip().lower()
                         if "true" not in res: continue
                         try: relevance_score = int(''.join(filter(str.isdigit, res)))
                         except: relevance_score = 5
@@ -127,15 +123,14 @@ def fetch_sensing_data(user_id):
     all_news.sort(key=lambda x: x['date_obj'], reverse=True)
     return all_news
 
-# --- 4. [중요] 세션 초기화 및 사이드바 렌더링 ---
+# --- 4. 메인 UI (사이드바 및 에러 방지 로직) ---
 st.set_page_config(page_title="NOD Intelligence Hub", layout="wide")
 
 with st.sidebar:
     st.title("👤 User Profile")
-    # 사용자 선택을 최상단에 배치
     selected_user = st.radio("사용자 선택", ["1", "2", "3", "4"], horizontal=True, key="user_radio")
     
-    # [수정 지점] KeyError 방지를 위한 DB 로드 로직 강화
+    # [수정 핵심] KeyError 방지용 세션 초기화
     if "current_user" not in st.session_state or st.session_state.current_user != selected_user:
         st.session_state.current_user = selected_user
         st.session_state.db = load_user_db(selected_user)
@@ -145,11 +140,12 @@ with st.sidebar:
     st.divider()
     st.title("🛡️ NOD Controller")
     
-    # [수정 지점] st.session_state.db 존재 확인 후 렌더링
-    if "db" in st.session_state:
+    # DB 로드 보장 후 렌더링
+    if "db" in st.session_state and "settings" in st.session_state.db:
+        # API Key 관리
         st.session_state.db["settings"]["api_key"] = st.text_input(
             "Gemini API Key", 
-            value=st.session_state.db["settings"].get("api_key", ""), 
+            value=st.session_state.db["settings"].get("api_key", ""),
             type="password"
         )
         
@@ -172,16 +168,20 @@ with st.sidebar:
                             st.session_state.db["channels"][cat].append({"name": n_name, "url": n_url, "active": True})
                             save_user_db(selected_user, st.session_state.db); st.rerun()
 
-    st.divider()
-    if st.button("🚀 Apply & Sensing", use_container_width=True):
+        st.divider()
+        with st.expander("⚙️ 고급 필터"):
+            st.session_state.db["settings"]["sensing_period"] = st.slider("수집 기간 (일)", 1, 30, st.session_state.db["settings"].get("sensing_period", 7))
+            st.session_state.db["settings"]["filter_prompt"] = st.text_area("필터 프롬프트", value=st.session_state.db["settings"].get("filter_prompt", ""))
+
+    if st.button("🚀 Apply & Sensing Start", use_container_width=True):
         save_user_db(selected_user, st.session_state.db)
         st.session_state.news_data = fetch_sensing_data(selected_user)
         st.rerun()
 
-# --- 5. 메인 대시보드 ---
+# --- 5. 대시보드 렌더링 ---
 st.markdown(f"""<div style='padding: 30px; text-align: center; background: linear-gradient(135deg, #034EA2 0%, #007AFF 100%); border-radius: 0 0 30px 30px; color: white; margin-bottom: 30px;'>
     <h2 style='margin:0;'>Samsung NOD Strategy Hub</h2>
-    <p style='opacity:0.8;'>User {selected_user} Profile - Total {sum(len(v) for v in st.session_state.db['channels'].values())} Channels</p>
+    <p style='opacity:0.8;'>User {selected_user} Profile - Experience Strategy Intelligence</p>
 </div>""", unsafe_allow_html=True)
 
 if "news_data" in st.session_state:
@@ -191,22 +191,22 @@ if "news_data" in st.session_state:
         cols = st.columns(3)
         for i, item in enumerate(raw_data[:6]):
             with cols[i%3]:
-                st.markdown(f"""<div style='background: white; padding: 25px; border-radius: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #edf2f7; margin-bottom: 20px;'>
-                    <span style='background: #eef2ff; color: #034EA2; padding: 3px 10px; border-radius: 100px; font-size: 0.7rem; font-weight: 700;'>{item['category']}</span>
-                    <h4 style='margin: 15px 0 5px 0; line-height:1.4;'>{item['title_ko']}</h4>
-                    <p style='font-size: 0.8rem; color: #888;'>{item['source']} | {item['date']}</p>
-                    <a href='{item['link']}' target='_blank' style='font-size: 0.8rem; color: #034EA2; text-decoration: none;'>🔗 Read Original</a>
+                st.markdown(f"""<div style='background: white; padding: 25px; border-radius: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #edf2f7; height: 320px; display: flex; flex-direction: column;'>
+                    <span style='background: #eef2ff; color: #034EA2; padding: 3px 10px; border-radius: 100px; font-size: 0.7rem; font-weight: 700; width: fit-content;'>{item['category']}</span>
+                    <h4 style='margin: 15px 0 5px 0; line-height:1.4; color: #1d1d1f;'>{item['title_ko']}</h4>
+                    <p style='font-size: 0.8rem; color: #888; flex-grow: 1;'>{item['source']} | {item['date']}</p>
+                    <a href='{item['link']}' target='_blank' style='font-size: 0.8rem; color: #034EA2; text-decoration: none; font-weight: bold;'>🔗 원본 읽기</a>
                 </div>""", unsafe_allow_html=True)
-                if st.button("🔍 Deep Analysis", key=f"dd_{item['id']}"):
-                    st.info(get_ai_model().generate_content(f"요약해줘: {item['title_en']}").text)
+                if st.button("🔍 전략 Deep analysis", key=f"dd_{item['id']}"):
+                    st.info(get_ai_model().generate_content(f"기획자 관점 요약: {item['title_en']}").text)
         
         st.divider()
         st.subheader("📋 Intelligence Stream")
         for item in raw_data[6:]:
             with st.expander(f"[{item['category']}] {item['title_ko']} ({item['source']})"):
                 st.write(f"**Original:** {item['title_en']}")
-                st.link_button("원본 보기", item['link'])
+                st.link_button("뉴스 원문 이동", item['link'])
     else:
-        st.info("조건에 맞는 혁신 시그널이 없습니다. 기간을 늘려보세요.")
+        st.info("조건에 맞는 혁신 시그널이 없습니다. 수집 기간을 늘려보세요.")
 else:
-    st.warning("사이드바의 Sensing 버튼을 눌러 데이터 수집을 시작하세요.")
+    st.warning("사이드바에서 사용자 프로필을 확인하고 Sensing 버튼을 눌러주세요.")
