@@ -4,6 +4,7 @@ import google.generativeai as genai
 from bs4 import BeautifulSoup
 import json
 import os
+import re  # [수정] 숫자 추출을 위한 정규식 모듈 추가
 from datetime import datetime, timedelta
 import time
 from deep_translator import GoogleTranslator
@@ -105,7 +106,7 @@ def get_filtered_news(settings, _prompt, _weight):
         futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
         for f in as_completed(futures): raw_news.extend(f.result())
     
-    # 2단계: AI 점수제 필터링 (수집된 데이터 중 상위 50개만 정밀 분석하여 속도 확보)
+    # 2단계: AI 점수제 필터링
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:100]
     model = get_ai_model(settings["api_key"])
     filtered_list = []
@@ -120,10 +121,14 @@ def get_filtered_news(settings, _prompt, _weight):
         pb.progress((i + 1) / len(raw_news))
         
         try:
-            check_query = f"기준: {_prompt}\n뉴스제목: {item['title_en']}\n위 뉴스가 기준에 부합하는 정도를 0~100점 사이 숫자로만 답해."
+            # [수정] AI가 숫자 이외의 텍스트를 섞어 대답할 경우를 대비한 프롬프트 강화
+            check_query = f"당신은 뉴스 분류 전문가입니다. 아래 뉴스 제목이 주어진 [기준]에 얼마나 부합하는지 0점에서 100점 사이의 점수로 평가하세요.\n[기준]: {_prompt}\n[뉴스제목]: {item['title_en']}\n\n답변 형식: 오직 숫자만 답변하세요."
             res = model.generate_content(check_query).text.strip()
-            score = int(''.join(filter(str.isdigit, res)))
-        except: score = 50
+            # [수정] 정규식을 사용하여 응답 텍스트 내에서 숫자만 추출
+            match = re.search(r'\d+', res)
+            score = int(match.group()) if match else 0
+        except: 
+            score = 0
         
         if score >= _weight:
             item["score"] = score
@@ -133,10 +138,11 @@ def get_filtered_news(settings, _prompt, _weight):
             
     st_text.empty()
     pb.empty()
-    return filtered_list
+    # [수정] 점수 높은 순으로 정렬하여 반환
+    return sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
 
 # --- 4. UI 렌더링 ---
-st.set_page_config(page_title="NGEPT Hub v14.0", layout="wide")
+st.set_page_config(page_title="NGEPT Hub v14.1", layout="wide")
 st.markdown("""<style>
     .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 40px; box-shadow: 0 10px 20px rgba(0,0,0,0.03); }
     .card-img { width: 100%; height: 300px; object-fit: cover; background: #fafafa; }
@@ -152,7 +158,6 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    # API 키 수정 기능 유지
     st.subheader("📂 카테고리 관리")
     for cat, feeds in st.session_state.settings["channels"].items():
         st.session_state.settings["category_active"][cat] = st.toggle(f"{cat} ({len(feeds)})", value=st.session_state.settings["category_active"].get(cat, True))
@@ -168,22 +173,24 @@ with st.sidebar:
         st.session_state.settings["filter_prompt"] = f_prompt
         st.session_state.settings["filter_weight"] = f_weight
         save_user_settings(u_id, st.session_state.settings)
-        st.cache_data.clear() # 전체 캐시 삭제로 필터 반영 보장
+        st.cache_data.clear() 
         st.rerun()
 
 # --- 5. 메인 화면 ---
 st.markdown("<h1 style='text-align:center;'>NGEPT Strategy Hub</h1>", unsafe_allow_html=True)
 
-# 뉴스 데이터 로드 (프롬프트 정보를 인자로 전달하여 변경 감지)
 news_list = get_filtered_news(st.session_state.settings, st.session_state.settings["filter_prompt"], st.session_state.settings["filter_weight"])
 
 if news_list:
     cols = st.columns(3)
     for i, item in enumerate(news_list[:st.session_state.settings["max_articles"]]):
         with cols[i % 3]:
+            # 점수에 따른 라벨 색상 변화 (80점 이상 초록, 이하 파랑)
+            label_style = "background: #E8F5E9; color: #2E7D32;" if item.get('score', 0) >= 80 else "background: #E3F2FD; color: #1976D2;"
+            
             st.markdown(f"""<div class="insta-card">
                 <div style="padding:15px; display:flex; justify-content:space-between; align-items:center;">
-                    <b>🌐 {item['source']}</b><span class="score-label">MATCH: {item.get('score', 50)}%</span>
+                    <b>🌐 {item['source']}</b><span class="score-label" style="{label_style}">MATCH: {item.get('score', 0)}%</span>
                 </div>
                 <img src="https://s.wordpress.com/mshots/v1/{item['link']}?w=600" class="card-img">
                 <div style="padding:20px;">
@@ -195,6 +202,7 @@ if news_list:
             </div>""", unsafe_allow_html=True)
             if st.button("🔍 Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
                 model = get_ai_model(st.session_state.settings["api_key"])
-                st.info(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n제목: {item['title_en']}").text)
+                if model:
+                    st.info(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n제목: {item['title_en']}").text)
 else:
     st.info("프롬프트 기준에 맞는 뉴스가 없습니다. 가중치를 낮추거나 프롬프트를 수정해 보세요.")
