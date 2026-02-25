@@ -94,18 +94,18 @@ def save_user_settings(user_id, settings):
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
 # ==========================================
-# 🧠 [AI 엔진] Gemini API 연동
+# 🧠 [AI 엔진] Gemini API 연동 (유료 Tier 1 최적화)
 # ==========================================
 def get_ai_model(api_key, mode="filter"):
-    # API 키가 없거나 너무 짧으면(유효하지 않으면) 모델 실행 차단
+    # API 키가 없거나 비정상적이면 실행 차단
     if not api_key or len(api_key.strip()) < 10:
         return None
         
     try:
         genai.configure(api_key=api_key.strip())
         
-        # 'models/'를 빼고, 가장 안정적인 latest 태그를 붙여줍니다.
-        MODEL_NAME = "gemini-1.5-flash-latest"
+        # 💡 [핵심 수정] 꼬리표를 모두 떼고 가장 표준적인 정식 명칭만 사용합니다.
+        MODEL_NAME = "gemini-1.5-flash"
         
         if mode == "analyze":
             return genai.GenerativeModel(MODEL_NAME, system_instruction=GEMS_PERSONA)
