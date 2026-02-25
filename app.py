@@ -336,4 +336,117 @@ with st.sidebar:
     st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"])
     st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"])
 
-    with st.expander("⚙️ 고급
+    with st.expander("⚙️ 고급 프롬프트 설정", expanded=False):
+        f_prompt = st.text_area("🔍 필터 프롬프트 (JSON 출력)", value=st.session_state.settings["filter_prompt"], height=200)
+        st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
+
+    if st.button("🚀 Sensing Start", use_container_width=True, type="primary"):
+        st.session_state.settings["filter_prompt"] = f_prompt
+        st.session_state.settings["filter_weight"] = f_weight
+        save_user_settings(u_id, st.session_state.settings)
+        st.cache_data.clear()
+        st.rerun()
+        
+    st.divider()
+    
+    if st.button("🔍 내 API 키 허용 모델 확인하기"):
+        test_key = st.session_state.settings.get("api_key", "").strip()
+        if not test_key:
+            st.error("⚠️ 위젯에서 API Key를 먼저 입력하고 [💾 저장]을 눌러주세요.")
+        else:
+            try:
+                temp_client = get_ai_client(test_key)
+                models = temp_client.models.list()
+                model_names = [m.name for m in models]
+                st.success(f"✅ 사용 가능한 모델 목록: {model_names}")
+            except Exception as e:
+                st.error(f"🚨 조회 실패: {e}")
+
+# 2. 메인 컨텐츠 영역
+st.markdown("<h1 style='text-align:center;'>NOD Strategy Hub</h1>", unsafe_allow_html=True)
+st.caption(f"<div style='text-align:center;'>차세대 경험기획팀을 위한 Gems 통합 인사이트 보드</div><br>", unsafe_allow_html=True)
+
+news_list = get_filtered_news(
+    st.session_state.settings, 
+    st.session_state.channels, 
+    st.session_state.settings["filter_prompt"], 
+    st.session_state.settings["filter_weight"]
+)
+
+if news_list:
+    top_picks = news_list[:6]
+    stream_news = news_list[6:]
+
+    # ==========================
+    # 🏆 Section 1: Today's Top Picks
+    # ==========================
+    st.markdown("<div class='section-header'>🏆 Today's Top Picks</div>", unsafe_allow_html=True)
+    
+    top_cols = st.columns(3)
+    for i, item in enumerate(top_picks):
+        with top_cols[i % 3]:
+            img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=800"
+            title_text = item.get('insight_title', item['title_en'])
+            
+            html_card = f"""
+            <a href="{item['link']}" target="_blank" style="text-decoration:none;">
+                <div class="top-pick-card">
+                    <img src="{img_src}" class="top-pick-bg" loading="lazy" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=NOD+Insight';">
+                    <div class="top-pick-overlay"></div>
+                    <div class="top-pick-content">
+                        <span class="top-pick-score">MATCH {item['score']}%</span>
+                        <div class="top-pick-title">{title_text}</div>
+                        <div class="top-pick-source">📰 {item['source']}</div>
+                    </div>
+                </div>
+            </a>
+            """
+            st.markdown(html_card, unsafe_allow_html=True)
+
+    # ==========================
+    # 🌊 Section 2: Sensing Stream
+    # ==========================
+    st.divider()
+    st.markdown("<div class='section-header'>🌊 Sensing Stream</div>", unsafe_allow_html=True)
+
+    stream_cols = st.columns(3)
+    for i, item in enumerate(stream_news):
+        with stream_cols[i % 3]:
+            img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
+            title_text = item.get('insight_title', item['title_en'])
+            summary_text = item.get('core_summary', item.get('summary_ko', ''))
+            
+            html_card = f"""
+            <div class="stream-card">
+                <div class="stream-header">
+                    <div class="source-badge">
+                        <div class="source-icon">📰</div>
+                        <div class="source-name">{item['source']}</div>
+                    </div>
+                    <span class="stream-score">MATCH {item['score']}%</span>
+                </div>
+                <img src="{img_src}" class="stream-img" loading="lazy" onerror="this.src='https://via.placeholder.com/600x338?text=No+Image';">
+                <div class="stream-body">
+                    <div class="stream-title">💡 {title_text}</div>
+                    <div class="stream-text">{summary_text}</div>
+                    <a href="{item['link']}" target="_blank" class="read-more">원문 기사 읽기 ↗</a>
+                </div>
+            </div>
+            """
+            st.markdown(html_card, unsafe_allow_html=True)
+            
+            if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
+                current_api_key = st.session_state.settings.get("api_key", "").strip()
+                if not current_api_key:
+                    st.warning("⚠️ API Key를 확인해주세요.")
+                else:
+                    client = get_ai_client(current_api_key)
+                    if client:
+                        with st.spinner("💎 수석 전략가가 분석 중입니다..."):
+                            try:
+                                config = types.GenerateContentConfig(system_instruction=GEMS_PERSONA)
+                                prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
+                                response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
+                                st.info(response.text)
+                            except Exception as e:
+                                st.error(f"🚨 분석 오류: {e}")
