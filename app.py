@@ -46,7 +46,6 @@ DEFAULT_FILTER_PROMPT = """귀하는 차세대경험기획팀의 'NOD 프로젝�
 CHANNELS_FILE = "channels.json"
 
 def load_channels_from_file():
-    """channels.json 파일에서 채널 리스트를 읽어옵니다."""
     if os.path.exists(CHANNELS_FILE):
         try:
             with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
@@ -57,7 +56,6 @@ def load_channels_from_file():
     return {}
 
 def save_channels_to_file(channels_data):
-    """채널 리스트 변경사항을 channels.json 파일에 저장합니다."""
     try:
         with open(CHANNELS_FILE, "w", encoding="utf-8") as f:
             json.dump(channels_data, f, ensure_ascii=False, indent=4)
@@ -68,7 +66,6 @@ def save_channels_to_file(channels_data):
 # ⚙️ [설정 관리] 사용자 설정 로직
 # ==========================================
 def load_user_settings(user_id):
-    """사용자별 설정(API키, 프롬프트 등)을 로드합니다."""
     fn = f"nod_samsung_user_{user_id}.json"
     default_settings = {
         "api_key": "",
@@ -93,7 +90,7 @@ def save_user_settings(user_id, settings):
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
 # ==========================================
-# 🧠 [AI 엔진] Gemini API 연동 (최신 SDK)
+# 🧠 [AI 엔진] Gemini API 연동
 # ==========================================
 def get_ai_client(api_key):
     if not api_key or len(api_key.strip()) < 10:
@@ -110,30 +107,7 @@ def safe_translate(text):
     except: return text
 
 # ==========================================
-# 📡 [수집 엔진] 뉴스 크롤링 및 필터링
-# ==========================================
-def fetch_raw_news(args):
-    cat, f, limit = args
-    articles = []
-    try:
-        d = feedparser.parse(f["url"])
-        for entry in d.entries[:15]:
-            dt = entry.get('published_parsed') or entry.get('updated_parsed')
-            if not dt: continue
-            p_date = datetime.fromtimestamp(time.mktime(dt))
-            if p_date < limit: continue
-            articles.append({
-                "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
-                "title_en": entry.title, "link": entry.link, "source": f["name"],
-                "category": cat, "date_obj": p_date, "date": p_date.strftime("%Y.%m.%d"),
-                "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300]
-            })
-    except: pass
-    return articles
-
-@st.cache_data(ttl=600) 
-# ==========================================
-# 📡 [수집 엔진] 뉴스 크롤링 및 필터링 (병렬 처리 업그레이드)
+# 📡 [수집 엔진] 뉴스 크롤링 및 초고속 병렬 필터링
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
@@ -168,7 +142,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     if not active_tasks: return []
 
     raw_news = []
-    # 1. RSS 뉴스 크롤링 병렬 처리 (기존 동일)
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
         for f in as_completed(futures): raw_news.extend(f.result())
@@ -189,7 +162,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     pb = st.progress(0)
     st_text = st.empty()
     
-    # 💡 [핵심 업그레이드] 개별 기사를 채점하는 '독립된 작업자(Worker)' 함수 생성
     def ai_scoring_worker(item):
         try:
             score_query = f"{_prompt}\n\n[평가 대상]\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}\n\n점수(0-100) 숫자만 출력:"
@@ -204,39 +176,108 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             score = 50 
         return item, score
 
-    # 💡 15개의 스레드(계산대)를 동시에 가동하여 AI 평가를 병렬로 진행합니다.
     with ThreadPoolExecutor(max_workers=15) as executor:
-        # 모든 기사를 15명의 작업자에게 동시에 던져줍니다.
         future_to_item = {executor.submit(ai_scoring_worker, item): item for item in raw_news}
         
-        # 분석이 끝나는 순서대로 즉시 받아옵니다.
         for i, future in enumerate(as_completed(future_to_item)):
-            st_text.caption(f"⚡ AI 다중 스레드 초고속 필터링 진행 중... ({i+1}/{len(raw_news)})")
+            st_text.caption(f"⚡ AI 초고속 다중 스레드 필터링 진행 중... ({i+1}/{len(raw_news)})")
             pb.progress((i + 1) / len(raw_news))
             
             item, score = future.result()
             
-            # 기준 점수를 넘은 기사만 번역하고 리스트에 추가합니다.
             if score >= _weight:
                 item["score"] = score
                 item["title_ko"] = safe_translate(item["title_en"])
                 item["summary_ko"] = safe_translate(item["summary_en"])
                 filtered_list.append(item)
-            
+                
     st_text.empty()
     pb.empty()
-    
-    # 점수순으로 정렬하여 최종 반환
     return sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
 
 # ==========================================
-# 🖥️ [UI] 메인 화면 렌더링
+# 🖥️ [UI] 메인 화면 렌더링 (Instagram 스타일)
 # ==========================================
 st.set_page_config(page_title="NGEPT Strategy Hub", layout="wide")
+
+# 💡 모던 인스타그램 스타일 CSS 적용
 st.markdown("""<style>
-    .insta-card { background: white; border-radius: 15px; border: 1px solid #e0e0e0; margin-bottom: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-    .card-img { width: 100%; height: 250px; object-fit: cover; border-bottom: 1px solid #f0f0f0; border-radius: 15px 15px 0 0; }
-    .score-badge { background-color: #E3F2FD; color: #1565C0; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .insta-card { 
+        background: #ffffff; 
+        border: 1px solid #dbdbdb; 
+        border-radius: 12px; 
+        margin-bottom: 40px; 
+        overflow: hidden;
+    }
+    .card-header { 
+        padding: 14px 16px; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        border-bottom: 1px solid #efefef;
+    }
+    .source-info { 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+    }
+    .source-icon {
+        width: 32px; height: 32px; 
+        background: #f0f2f5; 
+        border-radius: 50%; 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        font-size: 14px;
+    }
+    .source-name { 
+        font-weight: 600; 
+        font-size: 0.95rem; 
+        color: #262626; 
+    }
+    .score-badge { 
+        background-color: #0095f6; 
+        color: white; 
+        padding: 4px 10px; 
+        border-radius: 12px; 
+        font-size: 0.75rem; 
+        font-weight: 700; 
+    }
+    .card-img { 
+        width: 100%; 
+        aspect-ratio: 4/3; 
+        object-fit: cover; 
+        display: block; 
+    }
+    .card-body { 
+        padding: 16px; 
+    }
+    .card-title { 
+        font-weight: 700; 
+        font-size: 1.1rem; 
+        line-height: 1.4; 
+        color: #262626; 
+        margin-bottom: 4px; 
+    }
+    .card-subtitle { 
+        font-size: 0.85rem; 
+        color: #8e8e8e; 
+        margin-bottom: 12px; 
+        line-height: 1.3; 
+    }
+    .card-text { 
+        font-size: 0.95rem; 
+        color: #262626; 
+        line-height: 1.5; 
+        margin-bottom: 16px; 
+    }
+    .read-more { 
+        color: #0095f6; 
+        font-weight: 600; 
+        text-decoration: none; 
+        font-size: 0.9rem; 
+    }
 </style>""", unsafe_allow_html=True)
 
 if "channels" not in st.session_state:
@@ -305,11 +346,15 @@ with st.sidebar:
 
     st.divider()
     
-    with st.expander("⚙️ 고급 필터 설정", expanded=False):
+    # 💡 [요청사항 1] 자주 쓰는 설정들을 밖으로 빼고 이름 변경
+    st.subheader("🎛️ 기본 필터 설정")
+    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"])
+    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"])
+
+    # 프롬프트들만 고급 설정 박스 안에 유지
+    with st.expander("⚙️ 고급 프롬프트 설정", expanded=False):
         f_prompt = st.text_area("🔍 필터 프롬프트 (Few-Shot)", value=st.session_state.settings["filter_prompt"], height=200)
-        f_weight = st.slider("🎯 최소 일치 점수", 0, 100, st.session_state.settings["filter_weight"])
-        st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"])
-        st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"])
+        st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
 
     if st.button("🚀 Sensing Start", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
@@ -320,7 +365,6 @@ with st.sidebar:
         
     st.divider()
     
-    # 💡 [핵심 수정 2] 모델 확인 버튼을 가장 아래로 이동 (에러 완벽 방지)
     if st.button("🔍 내 API 키 허용 모델 확인하기"):
         test_key = st.session_state.settings.get("api_key", "").strip()
         if not test_key:
@@ -336,7 +380,7 @@ with st.sidebar:
 
 # 2. 메인 컨텐츠 영역
 st.markdown("<h1 style='text-align:center;'>NOD Strategy Hub</h1>", unsafe_allow_html=True)
-st.caption(f"<div style='text-align:center;'>차세대 경험기획팀을 위한 Gems 통합 인사이트 보드</div>", unsafe_allow_html=True)
+st.caption(f"<div style='text-align:center;'>차세대 경험기획팀을 위한 Gems 통합 인사이트 보드</div><br>", unsafe_allow_html=True)
 
 news_list = get_filtered_news(
     st.session_state.settings, 
@@ -353,24 +397,27 @@ if news_list:
             title_ko = item.get('title_ko', item['title_en'])
             summary_ko = item.get('summary_ko', '')[:120]
             
+            # 💡 [요청사항 2] 인스타그램 피드 스타일의 깔끔한 카드 UI 렌더링
             html_card = f"""
             <div class="insta-card">
-                <div style="padding:15px; display:flex; justify-content:space-between; align-items:center;">
-                    <b>🌐 {item['source']}</b>
+                <div class="card-header">
+                    <div class="source-info">
+                        <div class="source-icon">📰</div>
+                        <div class="source-name">{item['source']}</div>
+                    </div>
                     <span class="score-badge">MATCH {score}%</span>
                 </div>
                 <img src="https://s.wordpress.com/mshots/v1/{item['link']}?w=600" class="card-img" loading="lazy">
-                <div style="padding:20px;">
-                    <div style="font-weight:bold; font-size:1.1rem; line-height:1.4;">{title_ko}</div>
-                    <div style="font-size:0.8rem; color:gray; margin-top:8px;">{item['title_en']}</div>
-                    <div style="font-size:0.85rem; color:#444; margin-top:15px;">{summary_ko}...</div>
-                    <br><a href="{item['link']}" target="_blank" style="color:#007AFF; font-weight:bold; text-decoration:none;">🔗 원문 보기</a>
+                <div class="card-body">
+                    <div class="card-title">{title_ko}</div>
+                    <div class="card-subtitle">{item['title_en']}</div>
+                    <div class="card-text">{summary_ko}...</div>
+                    <a href="{item['link']}" target="_blank" class="read-more">원문 기사 읽기 ↗</a>
                 </div>
             </div>
             """
             st.markdown(html_card, unsafe_allow_html=True)
             
-            # Gems 심층 분석 버튼
             if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
                 current_api_key = st.session_state.settings.get("api_key", "").strip()
                 
@@ -386,7 +433,6 @@ if news_list:
                                 )
                                 prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
                                 
-                                # 💡 [핵심 수정 3] 최신 2.5 버전 명시
                                 response = client.models.generate_content(
                                     model="gemini-2.5-flash",
                                     contents=prompt,
