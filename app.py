@@ -329,7 +329,12 @@ if news_list:
                     <b>🌐 {item['source']}</b>
                     <span class="score-badge">MATCH {item.get('score', 0)}%</span>
                 </div>
-                <img src="https://s.wordpress.com/mshots/v1/{item['link']}?w=600" class="card-img">
+                
+                <img src="https://s.wordpress.com/mshots/v1/{item['link']}?w=600" 
+                     class="card-img" 
+                     loading="lazy" 
+                     onerror="this.onerror=null; this.src='https://via.placeholder.com/600x250/f0f0f0/cccccc?text=No+Image';">
+                
                 <div style="padding:20px;">
                     <div style="font-weight:bold; font-size:1.1rem; line-height:1.4;">{item.get('title_ko', item['title_en'])}</div>
                     <div style="font-size:0.8rem; color:gray; margin-top:8px;">{item['title_en']}</div>
@@ -337,6 +342,8 @@ if news_list:
                     <br><a href="{item['link']}" target="_blank" style="color:#007AFF; font-weight:bold; text-decoration:none;">🔗 원문 보기</a>
                 </div>
             </div>""", unsafe_allow_html=True)
+            
+            # Gems 심층 분석 버튼 (이하 기존 코드와 동일)
             
             # Gems 심층 분석 버튼
             if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
