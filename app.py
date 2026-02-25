@@ -178,7 +178,7 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             
             # 최신 SDK 모델 호출 문법
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-2.0-flash",
                 contents=score_query
             )
             res = response.text.strip()
@@ -342,7 +342,7 @@ if news_list:
                                 prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
                                 
                                 response = client.models.generate_content(
-                                    model="gemini-1.5-flash",
+                                    model="gemini-2.0-flash",
                                     contents=prompt,
                                     config=config
                                 )
