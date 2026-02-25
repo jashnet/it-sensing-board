@@ -1,0 +1,22 @@
+{
+    "Global Innovation": [
+        {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "active": true},
+        {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "active": true},
+        {"name": "Wired", "url": "https://www.wired.com/feed/rss", "active": true},
+        {"name": "Engadget", "url": "https://www.engadget.com/rss.xml", "active": true},
+        {"name": "9to5Mac", "url": "https://9to5mac.com/feed/", "active": true},
+        {"name": "MacRumors", "url": "https://feeds.macrumors.com/MacRumors-All", "active": true},
+        {"name": "Samsung Global", "url": "https://news.samsung.com/global/feed", "active": true},
+        {"name": "Apple Newsroom", "url": "https://www.apple.com/newsroom/rss-feed.rss", "active": true},
+        {"name": "Patently Apple", "url": "http://www.patentlyapple.com/patently-apple/atom.xml", "active": true}
+    ],
+    "China & East Asia": [
+        {"name": "36Kr", "url": "https://36kr.com/feed", "active": true},
+        {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": true},
+        {"name": "SCMP Tech", "url": "https://www.scmp.com/rss/318206/feed.xml", "active": true}
+    ],
+    "Japan & Robotics": [
+        {"name": "Nikkei Asia", "url": "https://asia.nikkei.com/rss/feed/nar", "active": true},
+        {"name": "Gizmodo JP", "url": "https://www.gizmodo.jp/index.xml", "active": true}
+    ]
+}
