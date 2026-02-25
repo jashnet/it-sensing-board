@@ -176,12 +176,12 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             filtered_list.append(item)
         return filtered_list
 
-    # AI 필터링 진행
+# AI 필터링 진행 (초고속 모드)
     pb = st.progress(0)
     st_text = st.empty()
     
     for i, item in enumerate(raw_news):
-        st_text.caption(f"🎯 AI가 기사를 분석 중입니다... ({i+1}/{len(raw_news)})")
+        st_text.caption(f"⚡ AI 초고속 필터링 진행 중... ({i+1}/{len(raw_news)})")
         pb.progress((i + 1) / len(raw_news))
         
         try:
@@ -189,7 +189,13 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             res = model.generate_content(score_query).text.strip()
             match = re.search(r'\d+', res)
             score = int(match.group()) if match else 50 
-        except: score = 50 
+            
+            # 유료 Tier 1이므로 time.sleep() 대기 시간 삭제 완료! 🚀
+            
+        except Exception as e:
+            score = 50 
+            # 진짜 에러가 날 경우에만 화면에 원인을 표시
+            st.warning(f"기사 평가 중 일시적 오류 발생: {e}")
         
         if score >= _weight:
             item["score"] = score
