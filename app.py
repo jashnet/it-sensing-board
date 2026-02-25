@@ -69,9 +69,9 @@ def load_user_settings(user_id):
     fn = f"nod_samsung_user_{user_id}.json"
     default_settings = {
         "api_key": "",
-        "sensing_period": 3,
+        "sensing_period": 14,
         "max_articles": 30,
-        "filter_weight": 80,
+        "filter_weight": 70,
         "filter_prompt": DEFAULT_FILTER_PROMPT,
         "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True}
