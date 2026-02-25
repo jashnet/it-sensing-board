@@ -103,10 +103,14 @@ def get_ai_model(api_key, mode="filter"):
         
     try:
         genai.configure(api_key=api_key.strip())
+        
+        # 'models/'를 빼고, 가장 안정적인 latest 태그를 붙여줍니다.
+        MODEL_NAME = "gemini-1.5-flash-latest"
+        
         if mode == "analyze":
-            return genai.GenerativeModel('gemini-1.5-flash', system_instruction=GEMS_PERSONA)
+            return genai.GenerativeModel(MODEL_NAME, system_instruction=GEMS_PERSONA)
         else:
-            return genai.GenerativeModel('gemini-1.5-flash')
+            return genai.GenerativeModel(MODEL_NAME)
     except: 
         return None
 
