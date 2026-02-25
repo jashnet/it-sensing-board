@@ -100,9 +100,9 @@ def get_ai_model(api_key, mode="filter"):
     try:
         genai.configure(api_key=api_key.strip())
         if mode == "analyze":
-            return genai.GenerativeModel('gemini-1.5-flash', system_instruction=GEMS_PERSONA)
+            return genai.GenerativeModel('models/gemini-1.5-flash', system_instruction=GEMS_PERSONA)
         else:
-            return genai.GenerativeModel('gemini-1.5-flash')
+            return genai.GenerativeModel('models/gemini-1.5-flash')
     except: return None
 
 @st.cache_data(ttl=3600)
