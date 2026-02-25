@@ -10,10 +10,39 @@ import time
 from deep_translator import GoogleTranslator
 import requests
 import hashlib
-import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# --- 1. 초기 채널 데이터 (200+ Max Channels) ---
+# ==========================================
+# 💎 [Gems 연동 1] 수석 전략 분석가 페르소나 (심층 분석용)
+# ==========================================
+GEMS_PERSONA = """
+귀하는 글로벌 빅테크 기업의 '차세대 경험기획팀' 소속 수석 전략 분석가입니다.
+향후 2~3년 내 상용화될 신규 스마트 디바이스와 혁신적 UX/UI를 기획하기 위해 시장의 '초기 시그널'을 센싱하는 것이 목적입니다.
+
+[분석 필수 포함 항목]
+1. 혁신성: 기존 제품 대비 경험의 변화가 얼마나 큰가?
+2. 파급력: 전체 에코시스템에 어떤 변화를 주는가?
+3. 기획적 가치: 우리 팀의 차세대 제품 기획(NOD 프로젝트)에 어떤 영감을 주는가?
+"""
+
+# ==========================================
+# 🧠 [Gems 연동 2] 예시 학습(Few-Shot) 필터링 프롬프트 (기본값)
+# ==========================================
+DEFAULT_FILTER_PROMPT = """귀하는 차세대경험기획팀의 'NOD 프로젝트' 전용 뉴스 필터링 에이전트입니다.
+주어진 뉴스의 제목과 요약을 보고, 우리 팀의 기획 방향과 일치하는지 0~100점으로 평가하세요.
+
+[평가 기준]
+- 90~100점: 완전히 새로운 폼팩터, 혁신적 UX, 스마트 링/AR 글래스/신경 인터페이스(EMG) 등 하드웨어 시도, 공간 컴퓨팅, 에이전틱 AI, 주요 빅테크의 핵심 특허.
+- 60~89점: 기존 폼팩터의 성능 향상(AP, 배터리 등), 일반적인 웨어러블/스마트폰 신제품 출시.
+- 0~59점: 단순 루머, 주식/재무 뉴스, 우리 기획과 무관한 일반 IT 가십, 단순 S/W 업데이트.
+
+[평가 예시 (학습 데이터)]
+예시 1) 뉴스: "애플, 시선 추적과 EMG 밴드를 결합한 새로운 AR 인터페이스 특허 등록" -> 답변: 100
+예시 2) 뉴스: "삼성전자 갤럭시 S26, 스냅드래곤 8 Gen 4 탑재로 긱벤치 점수 소폭 상승" -> 답변: 65
+예시 3) 뉴스: "테슬라 주가 5% 하락, 머스크의 새로운 트윗 영향" -> 답변: 10
+"""
+
+# --- 1. 초기 채널 데이터 ---
 def get_initial_channels():
     return {
         "Global Innovation": [
@@ -27,24 +56,15 @@ def get_initial_channels():
             {"name": "Android Authority", "url": "https://www.androidauthority.com/feed/", "active": True},
             {"name": "Samsung Global", "url": "https://news.samsung.com/global/feed", "active": True},
             {"name": "Apple Newsroom", "url": "https://www.apple.com/newsroom/rss-feed.rss", "active": True},
-            {"name": "Bloomberg Tech", "url": "https://www.bloomberg.com/feeds/technology/index.rss", "active": True},
-            {"name": "X-MKBHD", "url": "https://rss.itdog.icu/twitter/user/mkbhd", "active": True},
-            {"name": "X-IceUniverse", "url": "https://rss.itdog.icu/twitter/user/universeice", "active": True},
-            {"name": "TechRadar", "url": "https://www.techradar.com/rss", "active": True},
-            {"name": "Pocket-lint", "url": "https://www.pocket-lint.com/rss/all", "active": True},
-            # ... (내부적으로 100개 이상의 글로벌 채널 리스트 포함)
+            {"name": "Bloomberg Tech", "url": "https://www.bloomberg.com/feeds/technology/index.rss", "active": True}
         ],
         "China & East Asia": [
             {"name": "36Kr", "url": "https://36kr.com/feed", "active": True},
             {"name": "IT Home", "url": "https://www.ithome.com/rss/", "active": True},
-            {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": True},
-            {"name": "SCMP Tech", "url": "https://www.scmp.com/rss/318206/feed.xml", "active": True},
-            {"name": "Sina Tech", "url": "https://tech.sina.com.cn/rss/all.xml", "active": True}
+            {"name": "Gizmochina", "url": "https://www.gizmochina.com/feed/", "active": True}
         ],
         "Japan & Robotics": [
-            {"name": "The Bridge JP", "url": "https://thebridge.jp/feed", "active": True},
             {"name": "Nikkei Asia", "url": "https://asia.nikkei.com/rss/feed/nar", "active": True},
-            {"name": "ASCII.jp", "url": "https://ascii.jp/rss.xml", "active": True},
             {"name": "Gizmodo JP", "url": "https://www.gizmodo.jp/index.xml", "active": True}
         ]
     }
@@ -53,10 +73,10 @@ def get_initial_channels():
 def load_user_settings(user_id):
     fn = f"nod_samsung_user_{user_id}.json"
     default = {
-        "api_key": "AIzaSyBpko5khWacamTzhI6lsA70LyjCCNf06aA",
-        "sensing_period": 3, "max_articles": 30, "filter_weight": 30,
-        "filter_prompt": "Galaxy, Apple, AI, 모바일 신기술 소식 위주로 수집하라.",
-        "ai_prompt": "삼성전자 기획자 관점 분석: 1.요약 2.영향 3.시사점",
+        "api_key": "",
+        "sensing_period": 3, "max_articles": 30, "filter_weight": 80, # 퓨샷 적용으로 가중치 기본값 상향
+        "filter_prompt": DEFAULT_FILTER_PROMPT,
+        "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True},
         "channels": get_initial_channels()
     }
@@ -72,11 +92,16 @@ def save_user_settings(user_id, settings):
     with open(f"nod_samsung_user_{user_id}.json", "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
-# --- 3. 정밀 AI 엔진 ---
-def get_ai_model(api_key):
+# --- 3. 정밀 AI 엔진 (모드 분리) ---
+def get_ai_model(api_key, mode="filter"):
     try:
         genai.configure(api_key=api_key.strip())
-        return genai.GenerativeModel('gemini-1.5-flash')
+        if mode == "analyze":
+            # 심층 분석 버튼 클릭 시 발동하는 수석 분석가 모드
+            return genai.GenerativeModel('gemini-1.5-flash', system_instruction=GEMS_PERSONA)
+        else:
+            # 필터링 시에는 프롬프트 창의 예시(Few-shot)를 따르는 기본 모드
+            return genai.GenerativeModel('gemini-1.5-flash')
     except: return None
 
 @st.cache_data(ttl=3600)
@@ -118,7 +143,9 @@ def get_filtered_news(settings, _prompt, _weight):
         for f in as_completed(futures): raw_news.extend(f.result())
     
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:150]
-    model = get_ai_model(settings["api_key"])
+    
+    # mode="filter"로 빠르고 객관적인 평가 모델 호출
+    model = get_ai_model(settings["api_key"], mode="filter")
     filtered_list = []
     
     if not model or not _prompt: 
@@ -133,15 +160,16 @@ def get_filtered_news(settings, _prompt, _weight):
     st_text = st.empty()
     
     for i, item in enumerate(raw_news):
-        st_text.caption(f"🎯 AI 기사 매칭 중... ({i+1}/{len(raw_news)})")
+        st_text.caption(f"🎯 AI가 학습된 기준으로 기사 평가 중... ({i+1}/{len(raw_news)})")
         pb.progress((i + 1) / len(raw_news))
         
         try:
-            score_query = f"기준: {_prompt}\n뉴스제목: {item['title_en']}\n위 뉴스가 기준에 부합하는지 0-100점 사이 숫자로만 답해."
+            # 퓨샷 프롬프트 + 실제 기사 데이터 조합
+            score_query = f"{_prompt}\n\n[실제 평가 대상]\n뉴스제목: {item['title_en']}\n뉴스요약: {item['summary_en'][:200]}\n\n위 뉴스를 평가하여 0에서 100 사이의 숫자만 답하세요."
             res = model.generate_content(score_query).text.strip()
             match = re.search(r'\d+', res)
-            score = int(match.group()) if match else 100 
-        except: score = 100 
+            score = int(match.group()) if match else 50 
+        except: score = 50 
         
         if score >= _weight:
             item["score"] = score
@@ -154,7 +182,7 @@ def get_filtered_news(settings, _prompt, _weight):
     return sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
 
 # --- 4. UI 렌더링 ---
-st.set_page_config(page_title="NGEPT Hub v14.4", layout="wide")
+st.set_page_config(page_title="NGEPT Hub v14.6 (Few-Shot & Gems)", layout="wide")
 st.markdown("""<style>
     .insta-card { background: white; border-radius: 20px; border: 1px solid #efefef; margin-bottom: 40px; box-shadow: 0 10px 20px rgba(0,0,0,0.03); }
     .card-img { width: 100%; height: 300px; object-fit: cover; }
@@ -170,7 +198,6 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    # [복구] API Key 관리 기능
     curr_key = st.session_state.settings.get("api_key", "").strip()
     if not st.session_state.get("editing_key", False) and curr_key:
         st.success("✅ API 인증 완료")
@@ -184,7 +211,6 @@ with st.sidebar:
             st.session_state.editing_key = False; st.rerun()
 
     st.divider()
-    # [복구] 채널 및 카테고리 상세 관리
     st.subheader("📂 카테고리 관리")
     for cat in list(st.session_state.settings["channels"].keys()):
         ch_list = st.session_state.settings["channels"][cat]
@@ -204,11 +230,11 @@ with st.sidebar:
                         save_user_settings(u_id, st.session_state.settings); st.rerun()
 
     st.divider()
-    with st.expander("⚙️ 고급 필터 및 프롬프트", expanded=True):
-        f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"])
+    with st.expander("⚙️ 고급 필터 및 프롬프트", expanded=False):
+        f_prompt = st.text_area("🔍 예시 학습(Few-Shot) 필터 프롬프트", value=st.session_state.settings["filter_prompt"], height=250)
         f_weight = st.slider("🎯 필터 가중치 (최소 점수)", 0, 100, st.session_state.settings["filter_weight"])
         st.session_state.settings["sensing_period"] = st.slider("수집 기간", 1, 30, st.session_state.settings["sensing_period"])
-        st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"])
+        st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트 (Gems용)", value=st.session_state.settings["ai_prompt"])
 
     if st.button("🚀 Apply & Sensing Start", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
@@ -219,6 +245,7 @@ with st.sidebar:
 
 # --- 5. 메인 화면 ---
 st.markdown("<h1 style='text-align:center;'>NGEPT Strategy Hub</h1>", unsafe_allow_html=True)
+st.caption(f"<div style='text-align:center;'>25명의 팀원을 위한 차세대 경험 기획 데이터 보드입니다.</div>", unsafe_allow_html=True)
 
 news_list = get_filtered_news(st.session_state.settings, st.session_state.settings["filter_prompt"], st.session_state.settings["filter_weight"])
 
@@ -238,9 +265,14 @@ if news_list:
                     <br><a href="{item['link']}" target="_blank" style="color:#007AFF; font-weight:bold; text-decoration:none;">🔗 원문 기사 읽기</a>
                 </div>
             </div>""", unsafe_allow_html=True)
-            if st.button("🔍 Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
-                model = get_ai_model(st.session_state.settings["api_key"])
+            
+            # 💎 Deep Analysis 버튼 (mode="analyze" 호출)
+            if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
+                model = get_ai_model(st.session_state.settings["api_key"], mode="analyze")
                 if model:
-                    st.info(model.generate_content(f"{st.session_state.settings['ai_prompt']}\n제목: {item['title_en']}").text)
+                    with st.spinner("💎 전략 기획 Gems가 리포트를 도출 중입니다..."):
+                        analysis_prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사 정보]\n제목: {item['title_en']}\n본문요약: {item['summary_en']}"
+                        response = model.generate_content(analysis_prompt)
+                        st.info(response.text)
 else:
-    st.info("데이터가 없습니다. 사이드바 설정을 확인한 후 'Apply & Sensing' 버튼을 눌러보세요.")
+    st.info("데이터가 없습니다. 사이드바 설정을 확인한 후 'Apply & Sensing Start' 버튼을 눌러보세요.")
