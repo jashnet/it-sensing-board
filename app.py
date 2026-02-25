@@ -215,7 +215,16 @@ if "channels" not in st.session_state:
 with st.sidebar:
     st.title("👤 NOD Leader Profile")
     u_id = st.radio("사용자 프로필", ["1", "2", "3", "4"], horizontal=True)
-    
+
+    if st.button("내 API 키 허용 모델 확인하기"):
+        try:
+            temp_client = get_ai_client(curr_key)
+            models = temp_client.models.list()
+            model_names = [m.name for m in models]
+            st.success(f"사용 가능한 모델: {model_names}")
+        except Exception as e:
+            st.error(f"조회 실패: {e}")
+            
     if "current_user" not in st.session_state or st.session_state.current_user != u_id:
         st.session_state.current_user = u_id
         st.session_state.settings = load_user_settings(u_id)
