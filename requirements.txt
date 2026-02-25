@@ -1,6 +1,6 @@
 streamlit
+google-generativeai>=0.8.2  # 반드시 버전(>=0.8.2)을 명시해야 최신 기능이 작동합니다!
 feedparser
-google-generativeai>=0.8.0
 beautifulsoup4
-requests
 deep-translator
+requests
