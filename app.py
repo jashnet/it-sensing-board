@@ -132,6 +132,29 @@ def fetch_raw_news(args):
     return articles
 
 @st.cache_data(ttl=600) 
+# ==========================================
+# 📡 [수집 엔진] 뉴스 크롤링 및 필터링 (병렬 처리 업그레이드)
+# ==========================================
+def fetch_raw_news(args):
+    cat, f, limit = args
+    articles = []
+    try:
+        d = feedparser.parse(f["url"])
+        for entry in d.entries[:15]:
+            dt = entry.get('published_parsed') or entry.get('updated_parsed')
+            if not dt: continue
+            p_date = datetime.fromtimestamp(time.mktime(dt))
+            if p_date < limit: continue
+            articles.append({
+                "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
+                "title_en": entry.title, "link": entry.link, "source": f["name"],
+                "category": cat, "date_obj": p_date, "date": p_date.strftime("%Y.%m.%d"),
+                "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300]
+            })
+    except: pass
+    return articles
+
+@st.cache_data(ttl=600) 
 def get_filtered_news(settings, channels_data, _prompt, _weight):
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     
@@ -145,6 +168,7 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     if not active_tasks: return []
 
     raw_news = []
+    # 1. RSS 뉴스 크롤링 병렬 처리 (기존 동일)
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
         for f in as_completed(futures): raw_news.extend(f.result())
@@ -165,14 +189,10 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     pb = st.progress(0)
     st_text = st.empty()
     
-    for i, item in enumerate(raw_news):
-        st_text.caption(f"⚡ AI 초고속 필터링 진행 중... ({i+1}/{len(raw_news)})")
-        pb.progress((i + 1) / len(raw_news))
-        
+    # 💡 [핵심 업그레이드] 개별 기사를 채점하는 '독립된 작업자(Worker)' 함수 생성
+    def ai_scoring_worker(item):
         try:
             score_query = f"{_prompt}\n\n[평가 대상]\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}\n\n점수(0-100) 숫자만 출력:"
-            
-            # 💡 [핵심 수정 1] 최신 2.5 버전 명시
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=score_query
@@ -180,19 +200,33 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             res = response.text.strip()
             match = re.search(r'\d+', res)
             score = int(match.group()) if match else 50 
-            
-        except Exception as e:
+        except Exception:
             score = 50 
-            st.warning(f"기사 평가 중 일시적 오류 발생: {e}")
+        return item, score
+
+    # 💡 15개의 스레드(계산대)를 동시에 가동하여 AI 평가를 병렬로 진행합니다.
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        # 모든 기사를 15명의 작업자에게 동시에 던져줍니다.
+        future_to_item = {executor.submit(ai_scoring_worker, item): item for item in raw_news}
         
-        if score >= _weight:
-            item["score"] = score
-            item["title_ko"] = safe_translate(item["title_en"])
-            item["summary_ko"] = safe_translate(item["summary_en"])
-            filtered_list.append(item)
+        # 분석이 끝나는 순서대로 즉시 받아옵니다.
+        for i, future in enumerate(as_completed(future_to_item)):
+            st_text.caption(f"⚡ AI 다중 스레드 초고속 필터링 진행 중... ({i+1}/{len(raw_news)})")
+            pb.progress((i + 1) / len(raw_news))
+            
+            item, score = future.result()
+            
+            # 기준 점수를 넘은 기사만 번역하고 리스트에 추가합니다.
+            if score >= _weight:
+                item["score"] = score
+                item["title_ko"] = safe_translate(item["title_en"])
+                item["summary_ko"] = safe_translate(item["summary_en"])
+                filtered_list.append(item)
             
     st_text.empty()
     pb.empty()
+    
+    # 점수순으로 정렬하여 최종 반환
     return sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
 
 # ==========================================
