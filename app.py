@@ -303,11 +303,51 @@ if news_list:
     cols = st.columns(3)
     for i, item in enumerate(news_list[:st.session_state.settings["max_articles"]]):
         with cols[i % 3]:
-            st.markdown(f"""<div class="insta-card">
+            # 💡 [복사 오류 방지] HTML 렌더링 전 변수를 미리 안전하게 빼둡니다.
+            score = item.get('score', 0)
+            title_ko = item.get('title_ko', item['title_en'])
+            summary_ko = item.get('summary_ko', '')[:120]
+            
+            html_card = f"""
+            <div class="insta-card">
                 <div style="padding:15px; display:flex; justify-content:space-between; align-items:center;">
                     <b>🌐 {item['source']}</b>
-                    <span class="score-badge">MATCH {item.get('score', 0)}%</span>
+                    <span class="score-badge">MATCH {score}%</span>
                 </div>
                 <img src="https://s.wordpress.com/mshots/v1/{item['link']}?w=600" class="card-img" loading="lazy">
                 <div style="padding:20px;">
-                    <div style="font-weight:bold; font-size:1.1rem; line-height:1.4;">{item.get('
+                    <div style="font-weight:bold; font-size:1.1rem; line-height:1.4;">{title_ko}</div>
+                    <div style="font-size:0.8rem; color:gray; margin-top:8px;">{item['title_en']}</div>
+                    <div style="font-size:0.85rem; color:#444; margin-top:15px;">{summary_ko}...</div>
+                    <br><a href="{item['link']}" target="_blank" style="color:#007AFF; font-weight:bold; text-decoration:none;">🔗 원문 보기</a>
+                </div>
+            </div>
+            """
+            st.markdown(html_card, unsafe_allow_html=True)
+            
+            # Gems 심층 분석 버튼 (최신 SDK 적용)
+            if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
+                current_api_key = st.session_state.settings.get("api_key", "").strip()
+                
+                if not current_api_key:
+                    st.warning("⚠️ 좌측 사이드바에서 Gemini API Key를 입력하고 [💾 저장]을 눌러주세요.")
+                else:
+                    client = get_ai_client(current_api_key)
+                    if client:
+                        with st.spinner("💎 수석 전략가가 분석 중입니다..."):
+                            try:
+                                config = types.GenerateContentConfig(
+                                    system_instruction=GEMS_PERSONA,
+                                )
+                                prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
+                                
+                                response = client.models.generate_content(
+                                    model="gemini-1.5-flash",
+                                    contents=prompt,
+                                    config=config
+                                )
+                                st.info(response.text)
+                            except Exception as e:
+                                st.error(f"🚨 구글 API 연결 오류입니다. API 키가 정확한지 확인해 주세요.\n\n상세 에러 내역: {e}")
+                    else:
+                        st.error("⚠️ API Key 형식이 올바르지 않습니다.")
