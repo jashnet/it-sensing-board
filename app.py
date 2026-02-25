@@ -97,13 +97,18 @@ def save_user_settings(user_id, settings):
 # 🧠 [AI 엔진] Gemini API 연동
 # ==========================================
 def get_ai_model(api_key, mode="filter"):
+    # API 키가 없거나 너무 짧으면(유효하지 않으면) 모델 실행 차단
+    if not api_key or len(api_key.strip()) < 10:
+        return None
+        
     try:
         genai.configure(api_key=api_key.strip())
         if mode == "analyze":
-            return genai.GenerativeModel('models/gemini-1.5-flash', system_instruction=GEMS_PERSONA)
+            return genai.GenerativeModel('gemini-1.5-flash', system_instruction=GEMS_PERSONA)
         else:
-            return genai.GenerativeModel('models/gemini-1.5-flash')
-    except: return None
+            return genai.GenerativeModel('gemini-1.5-flash')
+    except: 
+        return None
 
 @st.cache_data(ttl=3600)
 def safe_translate(text):
@@ -325,14 +330,20 @@ if news_list:
             
             # Gems 심층 분석 버튼
             if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
-                model = get_ai_model(st.session_state.settings["api_key"], mode="analyze")
-                if model:
-                    with st.spinner("💎 수석 전략가가 분석 중입니다..."):
-                        # 제목과 요약을 모두 Gems에 전달
-                        prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
-                        response = model.generate_content(prompt)
-                        st.info(response.text)
+                current_api_key = st.session_state.settings.get("api_key", "").strip()
+                
+                if not current_api_key:
+                    st.warning("⚠️ 좌측 사이드바에서 Gemini API Key를 입력하고 [💾 저장]을 눌러주세요.")
                 else:
-                    st.error("API Key를 먼저 설정해주세요.")
-else:
-    st.info("데이터가 없습니다. 사이드바에서 'Sensing Start'를 눌러주세요. (채널 URL이 올바른지 확인 필요)")
+                    model = get_ai_model(current_api_key, mode="analyze")
+                    if model:
+                        with st.spinner("💎 수석 전략가가 분석 중입니다..."):
+                            try:
+                                prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
+                                response = model.generate_content(prompt)
+                                st.info(response.text)
+                            except Exception as e:
+                                # Streamlit이 가려버린 진짜 에러 메시지를 화면에 강제 출력합니다.
+                                st.error(f"🚨 구글 API 연결 오류입니다. API 키가 정확한지 확인해 주세요.\n\n상세 에러 내역: {e}")
+                    else:
+                        st.error("⚠️ API Key 형식이 올바르지 않습니다.")
