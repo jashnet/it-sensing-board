@@ -13,6 +13,7 @@ import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
+# 프롬프트 외부 연동
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
 
 # ==========================================
@@ -44,6 +45,8 @@ def load_user_settings(user_id):
         "sensing_period": 3,
         "max_articles": 60,
         "filter_weight": 70,
+        "top_picks_count": 6,          # 💡 신규: Top Picks 총 개수
+        "top_picks_global_ratio": 50,  # 💡 신규: 글로벌 비율 (%)
         "filter_prompt": DEFAULT_FILTER_PROMPT,
         "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True}
@@ -110,6 +113,40 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
                     st.markdown(response.text)
                 except Exception as e:
                     st.error(f"🚨 분석 중 오류가 발생했습니다: {e}")
+
+# 💡 [신규] 채널 관리용 대형 팝업(Dialog)
+@st.dialog("📂 채널 상세 관리", width="large")
+def manage_channels_modal(cat):
+    st.markdown(f"### 📌 {cat} 채널 목록 수정")
+    st.caption("체크박스를 해제하면 해당 매체의 뉴스는 수집하지 않습니다.")
+    
+    # 1. 새로운 채널 추가 폼
+    with st.container(border=True):
+        st.markdown("**➕ 새 채널 추가**")
+        col_n, col_u, col_b = st.columns([2, 3, 1])
+        new_name = col_n.text_input("이름 (예: Verge)", key=f"new_name_{cat}")
+        new_url = col_u.text_input("RSS URL", key=f"new_url_{cat}")
+        if col_b.button("추가", key=f"add_btn_{cat}", use_container_width=True):
+            if new_name and new_url:
+                st.session_state.channels[cat].append({"name": new_name, "url": new_url, "active": True})
+                save_channels_to_file(st.session_state.channels)
+                st.rerun()
+
+    st.divider()
+    
+    # 2. 기존 채널 리스트 관리
+    for idx, f in enumerate(st.session_state.channels[cat]):
+        c1, c2 = st.columns([5, 1])
+        prev_state = f.get("active", True)
+        new_state = c1.checkbox(f["name"], value=prev_state, key=f"modal_cb_{cat}_{idx}")
+        if prev_state != new_state:
+            st.session_state.channels[cat][idx]["active"] = new_state
+            save_channels_to_file(st.session_state.channels)
+            st.rerun()
+        if c2.button("🗑️ 삭제", key=f"modal_del_{cat}_{idx}", use_container_width=True):
+            st.session_state.channels[cat].pop(idx)
+            save_channels_to_file(st.session_state.channels)
+            st.rerun()
 
 # ==========================================
 # 📡 [수집 엔진] 뉴스 크롤링
@@ -195,19 +232,19 @@ st.set_page_config(page_title="NGEPT Sensing Dashboard", layout="wide")
 st.markdown("""<style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     
-    /* 히어로 타이틀 영역 (모던 UI) */
-    .hero-banner { background: linear-gradient(135deg, #f8f9fa 0%, #eef2f3 100%); padding: 2rem; border-radius: 16px; text-align: center; margin-bottom: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; }
+    /* 타이틀 배너 영역 */
+    .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 2rem 2.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
     .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
-    .hero-h1 { margin: 0; font-size: 2.8rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .hero-p { margin: 10px 0 0 0; color: #666; font-size: 1.1rem; }
-
-    /* 기존 카드 스타일 유지 */
-    .hero-card { position: relative; border-radius: 16px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); transition: transform 0.2s; }
+    .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    /* 히어로 카드 공통 스타일 */
+    .hero-card { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); transition: transform 0.2s; }
     .hero-card:hover { transform: translateY(-3px); }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
     .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 20px; z-index: 3; color: white; }
     
+    /* 뱃지 스타일 */
     .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 8px; margin-right: 6px; }
     .badge-fire { background: #e74c3c; color: white; }
     .badge-score { background: #34495e; color: white; }
@@ -217,11 +254,22 @@ st.markdown("""<style>
     .hero-title { font-size: 1.2rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     .hero-source { font-size: 0.85rem; opacity: 0.9; }
     
-    /* 섹션 헤더 */
+    /* 스트림 카드 스타일 */
+    .stream-card { background: #ffffff; border: 1px solid #dbdbdb; border-radius: 12px; margin-bottom: 30px; overflow: hidden; }
+    .stream-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #efefef; }
+    .source-badge { display: flex; align-items: center; gap: 10px; }
+    .source-icon { width: 28px; height: 28px; background: #f0f2f5; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .source-name { font-weight: 600; font-size: 0.9rem; color: #262626; }
+    .stream-score { background-color: #E3F2FD; color: #1565C0; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
+    .stream-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; }
+    .stream-body { padding: 16px; }
+    .stream-title { font-weight: 700; font-size: 1.05rem; line-height: 1.4; color: #262626; margin-bottom: 10px; }
+    .stream-text { font-size: 0.9rem; color: #444; line-height: 1.5; margin-bottom: 16px; }
+    .read-more { color: #0095f6; font-weight: 600; text-decoration: none; font-size: 0.9rem; }
+    
     .section-header { font-size: 1.5rem; font-weight: 700; margin: 30px 0 20px 0; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
     .section-desc { font-size: 1rem; color: #888; font-weight: normal; margin-left: 5px; }
     
-    /* 버튼 둥글게 */
     div[data-testid="stButton"] button { border-radius: 8px; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
 
@@ -233,14 +281,12 @@ if "channels" not in st.session_state: st.session_state.channels = load_channels
 with st.sidebar:
     st.markdown("<h3 style='font-size:1.1rem; margin-bottom:5px;'>👤 NOD Leader Profile</h3>", unsafe_allow_html=True)
     
-    # 💡 1. 사용자 프로필 아이콘형 토글 버튼
     if "current_user" not in st.session_state:
         st.session_state.current_user = "1"
         st.session_state.settings = load_user_settings("1")
         
     p_cols = st.columns(4)
     for idx, p in enumerate(["1", "2", "3", "4"]):
-        # 선택된 사람은 찐한색(primary), 안 선택된 사람은 흐린색(secondary)
         btn_type = "primary" if st.session_state.current_user == p else "secondary"
         if p_cols[idx].button(f"👤 {p}", key=f"prof_{p}", type=btn_type, use_container_width=True):
             st.session_state.current_user = p
@@ -267,7 +313,6 @@ with st.sidebar:
 
     st.divider()
     
-    # 💡 2. 채널 관리 팝오버(Popover) 적용
     st.markdown("<h3 style='font-size:1.1rem; margin-bottom:10px;'>📂 구독 채널 관리</h3>", unsafe_allow_html=True)
     for cat in st.session_state.channels.keys():
         if cat not in st.session_state.settings["category_active"]: st.session_state.settings["category_active"][cat] = True
@@ -275,43 +320,34 @@ with st.sidebar:
     for cat in list(st.session_state.channels.keys()):
         is_active = st.session_state.settings["category_active"].get(cat, True)
         
-        # 8:2 비율로 쪼개서 좌측엔 토글 스위치, 우측엔 톱니바퀴 팝오버 배치
+        # 스위치와 톱니바퀴 모달 버튼 분리
         c1, c2 = st.columns([5, 1])
         with c1:
             st.session_state.settings["category_active"][cat] = st.toggle(f"{cat} ({len(st.session_state.channels[cat])})", value=is_active)
         with c2:
-            # 톱니바퀴 아이콘을 누르면 팝업이 뜸
-            with st.popover("⚙️", use_container_width=True):
-                st.markdown(f"**📌 {cat} 편집**")
-                with st.form(f"add_{cat}", clear_on_submit=True):
-                    new_name = st.text_input("이름 (예: Verge)")
-                    new_url = st.text_input("RSS URL")
-                    if st.form_submit_button("➕ 추가") and new_name and new_url:
-                        st.session_state.channels[cat].append({"name": new_name, "url": new_url, "active": True})
-                        save_channels_to_file(st.session_state.channels)
-                        st.rerun()
-                for idx, f in enumerate(st.session_state.channels[cat]):
-                    fc1, fc2 = st.columns([4, 1])
-                    prev_state = f.get("active", True)
-                    new_state = fc1.checkbox(f["name"], value=prev_state, key=f"cb_{cat}_{idx}")
-                    if prev_state != new_state:
-                        f["active"] = new_state
-                        save_channels_to_file(st.session_state.channels)
-                    if fc2.button("🗑️", key=f"del_{cat}_{idx}"):
-                        st.session_state.channels[cat].pop(idx)
-                        save_channels_to_file(st.session_state.channels)
-                        st.rerun()
+            if st.button("⚙️", key=f"open_modal_{cat}"):
+                manage_channels_modal(cat)
 
     st.divider()
     st.markdown("<h3 style='font-size:1.1rem; margin-bottom:10px;'>🎛️ AI 필터 세부 설정</h3>", unsafe_allow_html=True)
     
-    # 💡 3. 물음표 툴팁(help) 추가
-    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"], 
-                         help="AI가 부여한 기사 관련도 점수입니다. 이 점수를 넘는 시그널만 화면에 노출됩니다.")
-    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"], 
-                         help="기준일로부터 며칠 전의 기사까지 긁어올지 결정합니다. 숫자가 클수록 수집/분석 시간이 길어집니다.")
-    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"], 
-                         help="수집된 전체 기사 중 최신순으로 잘라서 AI에게 검토를 맡길 최대 개수입니다.")
+    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"], help="AI가 부여한 기사 관련도 점수입니다. 이 점수를 넘는 시그널만 화면에 노출됩니다.")
+    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"], help="기준일로부터 며칠 전의 기사까지 긁어올지 결정합니다.")
+    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"], help="수집된 전체 기사 중 최신순으로 잘라서 AI에게 검토를 맡길 최대 개수입니다.")
+
+    # 💡 [신규] Today's Picks 큐레이션 세부 설정
+    st.markdown("<h3 style='font-size:1.1rem; margin-top:20px; margin-bottom:10px;'>📊 큐레이션 설정</h3>", unsafe_allow_html=True)
+    
+    # 저장된 설정값 불러오기 (기본값 처리)
+    current_tp_count = st.session_state.settings.get("top_picks_count", 6)
+    current_tp_ratio = st.session_state.settings.get("top_picks_global_ratio", 50)
+    
+    tp_count_options = [3, 6, 9, 12]
+    tp_count = st.selectbox("🏆 Today's Picks 노출 개수", options=tp_count_options, index=tp_count_options.index(current_tp_count) if current_tp_count in tp_count_options else 1)
+    tp_ratio = st.slider("🌐 글로벌 뉴스 비율 (%)", min_value=0, max_value=100, value=current_tp_ratio, step=10, help="100%면 글로벌 뉴스만, 0%면 중국 뉴스만 노출됩니다.")
+    
+    st.session_state.settings["top_picks_count"] = tp_count
+    st.session_state.settings["top_picks_global_ratio"] = tp_ratio
 
     with st.expander("⚙️ 고급 프롬프트 설정 (개발자용)", expanded=False):
         f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"], height=200)
@@ -337,23 +373,29 @@ with st.sidebar:
 # ==========================================
 # 4. 메인 컨텐츠 영역
 # ==========================================
-# 💡 4. 대형 모던 타이틀바 배너
 st.markdown("""
 <div class="hero-banner">
     <div class="hero-badge">AI-POWERED CURATION</div>
     <h1 class="hero-h1">NGEPT Sensing Dashboard</h1>
-    <p class="hero-p">차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드</p>
 </div>
 """, unsafe_allow_html=True)
+
+# 💡 간소화된 Live / Batch 상태 뱃지
+c1, c2 = st.columns([2, 1])
+with c1:
+    st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
+with c2:
+    if "manual_news" in st.session_state:
+        st.markdown("<div style='text-align:right; color:#e74c3c; font-weight:bold; font-size:0.9rem;'>📡 Live Mode (실시간 수동 수집)</div>", unsafe_allow_html=True)
+    elif os.path.exists("today_news.json"):
+        st.markdown("<div style='text-align:right; color:#3498db; font-weight:bold; font-size:0.9rem;'>🕒 Batch Mode (일일 자동 브리핑)</div>", unsafe_allow_html=True)
 
 news_list = []
 if "manual_news" in st.session_state:
     news_list = st.session_state.manual_news
-    st.success("📡 **Live Mode:** 수동으로 실시간 수집한 뉴스를 보고 계십니다.")
 elif os.path.exists("today_news.json"):
     try:
         with open("today_news.json", "r", encoding="utf-8") as f: news_list = json.load(f)
-        st.info("🕒 **Batch Mode:** 매일 아침 자동 수집된 데일리 브리핑입니다.")
     except: pass
 
 if not news_list:
@@ -393,15 +435,21 @@ else:
 
     remaining_news = [a for a in news_list if a['id'] not in used_ids]
 
-    global_picks = [a for a in remaining_news if a['category'] == 'Global Innovation'][:3]
-    china_picks = [a for a in remaining_news if a['category'] == 'China & East Asia'][:3]
+    # 💡 큐레이션 비율 적용
+    total_picks = st.session_state.settings.get("top_picks_count", 6)
+    global_ratio = st.session_state.settings.get("top_picks_global_ratio", 50) / 100.0
+    global_target = int(total_picks * global_ratio)
+    china_target = total_picks - global_target
+
+    global_picks = [a for a in remaining_news if a['category'] == 'Global Innovation'][:global_target]
+    china_picks = [a for a in remaining_news if a['category'] == 'China & East Asia'][:china_target]
     top_picks = global_picks + china_picks
     for a in top_picks: used_ids.add(a['id'])
 
-    if len(top_picks) < 6:
+    if len(top_picks) < total_picks:
         pool = [a for a in remaining_news if a['id'] not in used_ids]
         pool.sort(key=lambda x: x.get('score', 0), reverse=True)
-        fillers = pool[:6 - len(top_picks)]
+        fillers = pool[:total_picks - len(top_picks)]
         top_picks += fillers
         for a in fillers: used_ids.add(a['id'])
 
@@ -411,7 +459,7 @@ else:
     # 🔥 Section 1: MUST KNOW
     # ==========================
     if must_know_items:
-        st.markdown("<div class='section-header'>🔥 MUST KNOW <span class='section-desc'>여러 매체에서 동시다발적으로 보도 중인 핵심 이슈</span></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>🔥 MUST KNOW <span class='section-desc'>동시다발적 보도 핵심 이슈</span></div>", unsafe_allow_html=True)
         cols = st.columns(3)
         for i, item in enumerate(must_know_items):
             with cols[i % 3]:
@@ -433,12 +481,17 @@ else:
                 </a>
                 """
                 st.markdown(html_card, unsafe_allow_html=True)
+                
+                # 💡 [핵심] 카드 하단에 우측 정렬된 AI 분석 모달 버튼 추가
+                c_empty, c_btn = st.columns([2, 1])
+                if c_btn.button("🤖 AI 분석", key=f"btn_mk_{item['id']}", use_container_width=True):
+                    show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
     # 🏆 Section 2: Today's Top Picks
     # ==========================
     if top_picks:
-        st.markdown("<div class='section-header'>🏆 Today's Top Picks <span class='section-desc'>글로벌 & 중국 주요 시그널 (3:3 밸런스)</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-header'>🏆 Today's Top Picks <span class='section-desc'>글로벌 & 중국 주요 시그널 (총 {total_picks}개)</span></div>", unsafe_allow_html=True)
         cols = st.columns(3)
         for i, item in enumerate(top_picks):
             with cols[i % 3]:
@@ -463,9 +516,14 @@ else:
                 </a>
                 """
                 st.markdown(html_card, unsafe_allow_html=True)
+                
+                # 💡 [핵심] 카드 하단에 우측 정렬된 AI 분석 모달 버튼 추가
+                c_empty, c_btn = st.columns([2, 1])
+                if c_btn.button("🤖 AI 분석", key=f"btn_tp_{item['id']}", use_container_width=True):
+                    show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream (모달 연결)
+    # 🌊 Section 3: Sensing Stream 
     # ==========================
     if stream_news:
         st.divider()
@@ -492,10 +550,6 @@ else:
                     """
                     st.markdown(inner_html, unsafe_allow_html=True)
                     
-                    if st.button("🤖 AI 분석", key=f"btn_{item['id']}", use_container_width=True):
-                        show_analysis_modal(
-                            item, 
-                            st.session_state.settings.get("api_key", "").strip(), 
-                            GEMS_PERSONA, 
-                            st.session_state.settings['ai_prompt']
-                        )
+                    c_empty, c_btn = st.columns([2, 1])
+                    if c_btn.button("🤖 AI 분석", key=f"btn_st_{item['id']}", use_container_width=True):
+                        show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
