@@ -14,11 +14,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 from collections import Counter
 
-# 프롬프트 연동
+# 프롬프트 외부 연동 (prompts.py 파일이 같은 폴더에 있어야 합니다)
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
 
 # ==========================================
-# 📂 데이터 및 설정 관리
+# 📂 [데이터 관리] 채널 파일 입출력
 # ==========================================
 CHANNELS_FILE = "channels.json"
 
@@ -55,6 +55,9 @@ def save_user_settings(user_id, settings):
     with open(f"nod_samsung_user_{user_id}.json", "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
+# ==========================================
+# 🧠 [AI 엔진] & 💡 [모달 UI]
+# ==========================================
 def get_ai_client(api_key):
     if not api_key or len(api_key.strip()) < 10: return None
     try: return genai.Client(api_key=api_key.strip())
@@ -71,6 +74,7 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
     col1, col2 = st.columns([1, 2])
     with col1:
         img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
+        # 마크다운 렌더링 버그 방지를 위해 좌측 정렬(Indentation 제거)
         html_content = f"""
 <div style="border-radius: 12px; overflow: hidden; border: 1px solid #eaeaea; background: #fdfdfd;">
     <img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; display:block; border-bottom: 1px solid #eaeaea;">
@@ -127,7 +131,7 @@ def manage_channels_modal(cat):
             st.rerun()
 
 # ==========================================
-# 📡 [수집 및 AI 필터링 엔진]
+# 📡 [수집 및 AI 필터링 엔진 - 속도 최적화 버젼]
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
@@ -172,8 +176,9 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
         for f in as_completed([executor.submit(fetch_raw_news, t) for t in active_tasks]):
             raw_news.extend(f.result())
             
-    # 💡 [핵심 최적화] 커뮤니티 글이 쿼터를 잡아먹지 않도록 수집 풀을 3배로 늘림
-    raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:settings["max_articles"] * 3]
+    # 💡 [최적화] 커뮤니티 노이즈 대비용 1.3배수 수집 (속도 대폭 향상)
+    fetch_limit = int(settings["max_articles"] * 1.3)
+    raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:fetch_limit]
     
     client = get_ai_client(active_key)
     if not client or not _prompt: return []
@@ -181,14 +186,14 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     pb = st.progress(0)
     st_text = st.empty()
     current_ctx = get_script_run_ctx()
-    
     processed_items = []
     
     def ai_scoring_worker(item):
         add_script_run_ctx(ctx=current_ctx)
         try:
+            # API 제한 우회를 위한 랜덤 딜레이
             import random
-            time.sleep(random.uniform(0.1, 1.5))
+            time.sleep(random.uniform(0.1, 0.8))
             score_query = f"{_prompt}\n\n[평가 대상]\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
             response = client.models.generate_content(model="gemini-2.5-flash", contents=score_query)
             json_match = re.search(r'\{.*\}', response.text.strip(), re.DOTALL)
@@ -208,10 +213,12 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             item['keywords'] = []
         return item
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # 💡 [최적화] API 한도초과(429) 방지를 위해 Worker를 5개로 안정적 운용
+    total_items = len(raw_news)
+    with ThreadPoolExecutor(max_workers=5) as executor:
         for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
-            st_text.caption(f"⚡ AI 분석 및 소셜 리스닝 중... ({i+1}/{len(raw_news)})")
-            pb.progress((i + 1) / len(raw_news))
+            st_text.caption(f"⚡ AI 분석 및 소셜 리스닝 중... ({i+1} / {total_items}) - 잠시만 기다려주세요.")
+            pb.progress((i + 1) / total_items)
             processed_items.append(future.result())
             
     st_text.empty()
@@ -242,29 +249,80 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
         else:
             news['community_buzz'] = False
 
-    # 💡 점수 컷오프 통과한 '진짜 뉴스'만 최종 리스트업 (커뮤니티 글은 여기서 소멸)
+    # 필터 점수를 통과한 찐 기사만 화면 노출 풀로 이동
     final_news = [n for n in news_pool if n['score'] >= _weight]
     final_news = sorted(final_news, key=lambda x: x.get('score', 0), reverse=True)[:settings["max_articles"]]
-    
     return final_news
 
 # ==========================================
-# 🖥️ [UI] 메인 화면 렌더링
+# 🖥️ [UI] 메인 화면 및 🎨 [Dribbble 스타일 CSS]
 # ==========================================
 st.set_page_config(page_title="NGEPT Sensing Dashboard", layout="wide")
 
 st.markdown("""<style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     
+    /* 🎨 [Dribbble UI] 사이드바 디자인 오버라이딩 */
+    [data-testid="stSidebar"] {
+        background-color: #F8FAFC !important;
+        border-right: 1px solid #E2E8F0;
+    }
+    
+    .sidebar-label {
+        color: #64748B;
+        font-size: 0.75rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+        padding-left: 5px;
+    }
+    
+    /* Primary 액션 버튼 (그라데이션 & 그림자) */
+    div[data-testid="stButton"] button[kind="primary"] {
+        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-weight: 700;
+        box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25);
+        transition: all 0.2s ease;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35);
+    }
+    
+    /* Secondary 일반 버튼 */
+    div[data-testid="stButton"] button[kind="secondary"] {
+        border-radius: 12px;
+        background-color: transparent;
+        border: 1px solid #CBD5E1;
+        color: #475569;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover {
+        background-color: #F1F5F9;
+        color: #0F172A;
+        border-color: #94A3B8;
+    }
+
+    .stTextInput>div>div>input { border-radius: 10px; }
+    
+    /* 메인 히어로 배너 */
     .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 2rem 2.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
     .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
     .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     
+    /* 카드 내부 히어로 이미지 박스 */
     .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 10px; }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
     .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 15px; z-index: 3; color: white; }
     
+    /* 뱃지 및 텍스트 스타일 */
     .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 8px; margin-right: 6px; }
     .badge-fire { background: #e74c3c; color: white; }
     .badge-score { background: #34495e; color: white; }
@@ -278,44 +336,58 @@ st.markdown("""<style>
     
     .section-header { font-size: 1.5rem; font-weight: 700; margin: 30px 0 20px 0; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
     .section-desc { font-size: 1rem; color: #888; font-weight: normal; margin-left: 5px; }
-    div[data-testid="stButton"] button { border-radius: 8px; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
 
 if "channels" not in st.session_state: st.session_state.channels = load_channels_from_file()
 
 with st.sidebar:
-    st.markdown("<h3 style='font-size:1.1rem; margin-bottom:5px;'>👤 NOD Leader Profile</h3>", unsafe_allow_html=True)
     if "current_user" not in st.session_state:
         st.session_state.current_user = "1"
         st.session_state.settings = load_user_settings("1")
-        
+    
+    active_user = st.session_state.current_user
+    
+    # 🎨 [Dribbble UI] 고급 사용자 프로필 위젯
+    profile_html = f"""
+    <div style="display: flex; align-items: center; background: white; padding: 14px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-bottom: 15px; border: 1px solid #F1F5F9;">
+        <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; font-weight: bold; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; margin-right: 14px;">
+            {active_user}
+        </div>
+        <div style="display: flex; flex-direction: column;">
+            <p style="font-size: 0.95rem; font-weight: 800; color: #1E293B; margin:0; line-height: 1.2;">NGEPT Leader {active_user}</p>
+            <p style="font-size: 0.75rem; color: #64748B; margin:0;">Strategy & Planning</p>
+        </div>
+    </div>
+    """
+    st.markdown(profile_html, unsafe_allow_html=True)
+
+    st.markdown("<div class='sidebar-label'>Switch Profile</div>", unsafe_allow_html=True)
     p_cols = st.columns(4)
     for idx, p in enumerate(["1", "2", "3", "4"]):
-        btn_type = "primary" if st.session_state.current_user == p else "secondary"
+        btn_type = "primary" if active_user == p else "secondary"
         if p_cols[idx].button(f"👤 {p}", key=f"prof_{p}", type=btn_type, use_container_width=True):
             st.session_state.current_user = p
             st.session_state.settings = load_user_settings(p)
             st.session_state.channels = load_channels_from_file()
             st.rerun()
 
-    st.divider()
+    st.markdown("<div class='sidebar-label'>API Connection</div>", unsafe_allow_html=True)
     if "GEMINI_API_KEY" in st.secrets:
         st.session_state.settings["api_key"] = st.secrets["GEMINI_API_KEY"]
-        st.success("🔒 시스템 API Key 연동 완료")
+        st.success("🔒 System API Key Connected")
     else:
         curr_key = st.session_state.settings.get("api_key", "").strip()
         if not st.session_state.get("editing_key", False) and curr_key:
-            st.success("✅ 수동 API Key 연동됨")
-            if st.button("🔑 키 변경"): st.session_state.editing_key = True; st.rerun()
+            st.success("✅ Manual API Key Connected")
+            if st.button("🔑 Edit Key"): st.session_state.editing_key = True; st.rerun()
         else:
-            new_key = st.text_input("Gemini API Key", value=curr_key, type="password")
-            if st.button("💾 저장"):
+            new_key = st.text_input("Gemini API Key", value=curr_key, type="password", placeholder="Enter your key...")
+            if st.button("💾 Save Key"):
                 st.session_state.settings["api_key"] = new_key.strip()
                 save_user_settings(st.session_state.current_user, st.session_state.settings)
                 st.session_state.editing_key = False; st.rerun()
 
-    st.divider()
-    st.markdown("<h3 style='font-size:1.1rem; margin-bottom:10px;'>📂 구독 채널 관리</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-label'>Data Sources</div>", unsafe_allow_html=True)
     for cat in st.session_state.channels.keys():
         if cat not in st.session_state.settings["category_active"]: st.session_state.settings["category_active"][cat] = True
 
@@ -328,13 +400,12 @@ with st.sidebar:
             if st.button("⚙️", key=f"open_modal_{cat}"):
                 manage_channels_modal(cat)
 
-    st.divider()
-    st.markdown("<h3 style='font-size:1.1rem; margin-bottom:10px;'>🎛️ AI 필터 세부 설정</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"], help="AI가 부여한 기사 관련도 점수입니다.")
-    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"], help="기준일로부터 며칠 전의 기사까지 긁어올지 결정합니다.")
-    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"], help="수집된 기사 중 화면에 표시할 최대 개수입니다.")
+    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"])
+    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"])
 
-    st.markdown("<h3 style='font-size:1.1rem; margin-top:20px; margin-bottom:10px;'>📊 큐레이션 설정</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-label'>Curation Settings</div>", unsafe_allow_html=True)
     current_tp_count = st.session_state.settings.get("top_picks_count", 6)
     current_tp_ratio = st.session_state.settings.get("top_picks_global_ratio", 50)
     
@@ -348,19 +419,19 @@ with st.sidebar:
         f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"], height=200)
         st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
 
-    st.info("💡 평소엔 아침 자동 수집본을 보여줍니다. 즉시 최신 뉴스를 보려면 아래 버튼을 누르세요.")
+    st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
         st.session_state.settings["filter_weight"] = f_weight
         save_user_settings(st.session_state.current_user, st.session_state.settings)
-        with st.spinner("📡 현재 기준 최신 기사 수집 및 AI 분석 중..."):
+        with st.spinner("📡 최신 데이터 수집 및 긱(Geek) 버즈 분석 중..."):
             live_result = get_filtered_news(st.session_state.settings, st.session_state.channels, st.session_state.settings["filter_prompt"], st.session_state.settings["filter_weight"])
             st.session_state.manual_news = live_result
             st.success("✅ 실시간 업데이트 완료!")
             time.sleep(1)
             st.rerun()
             
-    if st.button("♻️ 원래 아침(자동) 버전으로 돌아가기", use_container_width=True):
+    if st.button("♻️ 원래 아침(자동) 버전으로 복귀", use_container_width=True):
         if "manual_news" in st.session_state: del st.session_state["manual_news"]
         st.rerun()
 
@@ -464,6 +535,7 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 긱(Geek) 화제</span>"
                     
+                    # 마크다운 들여쓰기 완벽 제거
                     html_content = f"""
 <div class="hero-img-box">
     <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW';">
@@ -503,6 +575,7 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 커뮤니티 화제</span>"
                     
+                    # 마크다운 들여쓰기 완벽 제거
                     html_content = f"""
 <div class="hero-img-box">
     <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=TOP+PICK';">
@@ -522,12 +595,12 @@ else:
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream & 💡 주요 태그 모음
+    # 🌊 Section 3: Sensing Stream & 💡 주요 태그
     # ==========================
     if stream_news:
         st.divider()
         
-        # 💡 [요청사항 5번] 전체 기사에서 추출된 핫 키워드 태그 표시 로직
+        # 전체 기사에서 추출된 핫 키워드 태그 표시
         all_tags = []
         for n in news_list:
             if isinstance(n.get('keywords'), list):
@@ -538,7 +611,6 @@ else:
         tag_html = " ".join([f"<span class='badge-tag'>#{t}</span>" for t in top_tags])
         
         st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
-        # 태그들을 제목 바로 밑에 예쁘게 표시
         if tag_html:
             st.markdown(f"<div style='margin-bottom: 20px;'>{tag_html}</div>", unsafe_allow_html=True)
 
@@ -554,6 +626,7 @@ else:
                     if item.get('community_buzz'):
                         buzz_tag = f"<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>"
                     
+                    # 마크다운 들여쓰기 완벽 제거
                     html_content = f"""
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
     <div style="display:flex; align-items:center; gap:8px;">
