@@ -140,6 +140,63 @@ def manage_channels_modal(cat):
             save_channels_to_file(st.session_state.channels)
             st.rerun()
 
+# 💡 [신규] Help & Architecture 팝업 다이어그램
+@st.dialog("🧠 NGEPT AI 큐레이션 파이프라인", width="large")
+def show_help_modal():
+    st.markdown("""
+    <div style="padding: 10px 5px;">
+        <p style="color: #64748B; font-size: 0.95rem; margin-bottom: 25px;">
+            NGEPT Sensing Dashboard는 단순한 뉴스 나열이 아닙니다. 
+            구글의 <strong>Gemini 2.5 Flash</strong> 엔진과 <strong>소셜 리스닝(Social Listening)</strong> 기법이 결합된 5단계 심층 큐레이션 파이프라인을 거칩니다.
+        </p>
+        
+        <div style="display: flex; margin-bottom: 25px; position: relative;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%); color: #334155; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; z-index: 2; box-shadow: 0 4px 6px rgba(0,0,0,0.05); flex-shrink: 0;">1</div>
+            <div style="position: absolute; left: 19px; top: 40px; bottom: -25px; width: 2px; background-color: #E2E8F0; z-index: 1;"></div>
+            <div style="margin-left: 20px; background: #F8FAFC; padding: 15px; border-radius: 12px; border: 1px solid #F1F5F9; width: 100%;">
+                <h4 style="margin: 0 0 5px 0; color: #1E293B;">🌐 1. Global Sensing (데이터 수집)</h4>
+                <p style="margin: 0; color: #475569; font-size: 0.85rem; line-height: 1.5;">전 세계 주요 IT 매체 및 긱(Geek) 커뮤니티(Reddit, V2EX 등)의 RSS 피드에서 설정된 기간(N일) 내의 최신 기사를 1.3배수 확보하여 로딩 속도를 최적화합니다.</p>
+            </div>
+        </div>
+
+        <div style="display: flex; margin-bottom: 25px; position: relative;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; z-index: 2; box-shadow: 0 4px 10px rgba(0, 114, 255, 0.3); flex-shrink: 0;">2</div>
+            <div style="position: absolute; left: 19px; top: 40px; bottom: -25px; width: 2px; background-color: #E2E8F0; z-index: 1;"></div>
+            <div style="margin-left: 20px; background: #F8FAFC; padding: 15px; border-radius: 12px; border: 1px solid #F1F5F9; width: 100%;">
+                <h4 style="margin: 0 0 5px 0; color: #1E293B;">🧠 2. AI Deep Scoring (심층 분석 & 필터링)</h4>
+                <p style="margin: 0; color: #475569; font-size: 0.85rem; line-height: 1.5;">수집된 모든 데이터를 Gemini AI가 분석하여 <b>적합도 점수(0~100점), 기획자 관점의 1줄 요약, 핵심 태그(Keyword), 출처 유형(뉴스 vs 커뮤니티)</b>을 JSON 형태로 즉각 추출해냅니다.</p>
+            </div>
+        </div>
+
+        <div style="display: flex; margin-bottom: 25px; position: relative;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #f1c40f 0%, #e67e22 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; z-index: 2; box-shadow: 0 4px 10px rgba(230, 126, 34, 0.3); flex-shrink: 0;">3</div>
+            <div style="position: absolute; left: 19px; top: 40px; bottom: -25px; width: 2px; background-color: #E2E8F0; z-index: 1;"></div>
+            <div style="margin-left: 20px; background: #FFFbeb; padding: 15px; border-radius: 12px; border: 1px solid #Fef08a; width: 100%;">
+                <h4 style="margin: 0 0 5px 0; color: #b45309;">💬 3. Social Listening (버즈량 융합 엔진)</h4>
+                <p style="margin: 0; color: #78350f; font-size: 0.85rem; line-height: 1.5;">커뮤니티 글은 노출 명단에서 숨기고 <b>'트렌드 레이더'</b>로만 사용합니다. 커뮤니티에서 자주 언급되는 키워드를 다룬 공식 뉴스에는 <b>가산점(+점수)과 [💬 화제] 뱃지</b>를 부여합니다.</p>
+            </div>
+        </div>
+
+        <div style="display: flex; margin-bottom: 25px; position: relative;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; z-index: 2; box-shadow: 0 4px 10px rgba(142, 68, 173, 0.3); flex-shrink: 0;">4</div>
+            <div style="position: absolute; left: 19px; top: 40px; bottom: -25px; width: 2px; background-color: #E2E8F0; z-index: 1;"></div>
+            <div style="margin-left: 20px; background: #F8FAFC; padding: 15px; border-radius: 12px; border: 1px solid #F1F5F9; width: 100%;">
+                <h4 style="margin: 0 0 5px 0; color: #1E293B;">🗂️ 4. Clustering & Curation (군집화 및 배분)</h4>
+                <p style="margin: 0; color: #475569; font-size: 0.85rem; line-height: 1.5;">단어 유사도를 분석해 중복 이슈를 하나로 묶어(Clustering) <b>'MUST KNOW'</b>에 최상단 배치하고, 남은 기사들은 설정하신 비율(글로벌:중국)에 맞춰 <b>'Top Picks'</b>에 분배합니다.</p>
+            </div>
+        </div>
+        
+        <div style="display: flex; position: relative;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.1rem; z-index: 2; box-shadow: 0 4px 10px rgba(39, 174, 96, 0.3); flex-shrink: 0;">5</div>
+            <div style="margin-left: 20px; background: #F8FAFC; padding: 15px; border-radius: 12px; border: 1px solid #F1F5F9; width: 100%;">
+                <h4 style="margin: 0 0 5px 0; color: #1E293B;">🎨 5. Zero-Latency Rendering (캐싱 및 시각화)</h4>
+                <p style="margin: 0; color: #475569; font-size: 0.85rem; line-height: 1.5;">최종 결과는 로컬(JSON)에 캐싱되어, 팀장님이 슬라이더(점수/개수)를 조작할 때마다 <b>AI 재호출 없이 0.1초 만에 즉각적으로 화면 레이아웃이 갱신</b>됩니다.</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 # ==========================================
 # 📡 [수집 및 AI 필터링 엔진]
 # ==========================================
