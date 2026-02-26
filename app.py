@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import feedparser
 from google import genai
 from google.genai import types
@@ -17,25 +16,6 @@ from collections import Counter
 
 # 프롬프트 외부 연동
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
-
-# ==========================================
-# 📋 [유틸] 클립보드 복사 함수 (JS Injection)
-# ==========================================
-def copy_to_clipboard(title, summary, link):
-    copy_text = f"[NGEPT Insight]\n제목: {title}\n요약: {summary}\n원문: {link}"
-    copy_text = copy_text.replace('`', '\\`').replace('$', '\\$')
-    js_code = f"""
-    <script>
-    const textArea = document.createElement("textarea");
-    textArea.value = `{copy_text}`;
-    document.body.appendChild(textArea);
-    textArea.select();
-    try {{ document.execCommand('copy'); }} 
-    catch (err) {{ console.error('Copy failed', err); }}
-    document.body.removeChild(textArea);
-    </script>
-    """
-    components.html(js_code, height=0, width=0)
 
 # ==========================================
 # 🎨 [애니메이션] 스피너 SVG UI 컴포넌트
@@ -68,7 +48,6 @@ def save_channels_to_file(channels_data):
 
 def load_user_settings(user_id):
     fn = f"nod_samsung_user_{user_id}.json"
-    # 💡 [요청사항 반영] 기본 설정값 변경: 기간 14일, 기사 50, 점수 50, 글로벌 70, Picks 6
     default_settings = {
         "api_key": "", "sensing_period": 14, "max_articles": 50, "filter_weight": 50,
         "top_picks_count": 6, "top_picks_global_ratio": 70,
@@ -133,6 +112,18 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
                     st.markdown(response.text)
                 except Exception as e:
                     st.error(f"🚨 분석 중 오류가 발생했습니다: {e}")
+
+# 💡 [신규] 브라우저 복사 버그를 해결한 확실한 클립보드용 모달
+@st.dialog("📤 기사 정보 공유", width="small")
+def show_share_modal(item):
+    title = item.get("insight_title", item.get("title_en", ""))
+    summary = item.get("core_summary", item.get("summary_ko", ""))
+    link = item.get("link", "")
+    
+    share_text = f"[NGEPT Insight]\n📌 제목: {title}\n\n💡 요약: {summary}\n\n🔗 원문: {link}"
+    
+    st.markdown("<p style='font-size: 0.9rem; color: #475569; margin-bottom: 5px;'>아래 코드 박스 우측 상단의 <b>복사 아이콘(📋)</b>을 누르시면 클립보드에 깔끔하게 저장됩니다.</p>", unsafe_allow_html=True)
+    st.code(share_text, language="markdown")
 
 @st.dialog("📂 채널 상세 관리", width="large")
 def manage_channels_modal(cat):
@@ -230,14 +221,9 @@ def fetch_raw_news(args):
         
         for entry in d.entries[:15]:
             dt = entry.get('published_parsed') or entry.get('updated_parsed')
-            
-            if not dt: 
-                continue
-                
+            if not dt: continue
             p_date = datetime.fromtimestamp(time.mktime(dt))
-            
-            if p_date < limit: 
-                continue
+            if p_date < limit: continue
             
             thumbnail = ""
             if 'media_content' in entry and len(entry.media_content) > 0: thumbnail = entry.media_content[0].get('url', '')
@@ -389,21 +375,32 @@ st.markdown("""<style>
     [data-testid="stSidebar"] { background-color: #F8FAFC !important; border-right: 1px solid #E2E8F0; }
     .sidebar-label { color: #64748B; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1.5rem; margin-bottom: 0.75rem; padding-left: 5px; }
     
+    /* 사이드바 기본 Primary 버튼 */
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
-    /* 💡 [핵심] 사이드바와 모달의 버튼들은 건드리지 않고, 메인 화면(기사 카드)의 액션 버튼만 초소형으로 스타일링! */
+    /* 사이드바 기본 Secondary/Tertiary 버튼 (원래 크기 유지) */
+    div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="secondary"],
+    div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="tertiary"] {
+        border-radius: 12px !important; 
+        min-height: 38px !important;
+        height: 38px !important;
+        font-size: 0.95rem !important;
+        padding: 0 14px !important;
+    }
+
+    /* 💡 [핵심] 메인 카드 안의 액션 버튼만 타겟팅하여 높이 10%, 가로 20% 키우고 글자는 작게 유지 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
-        min-height: 20px !important;
-        height: 20px !important;
-        padding: 0 6px !important;
+        min-height: 24px !important;  /* 기존 20px -> 24px (+20% 높이) */
+        height: 24px !important;
+        padding: 0 10px !important;   /* 기존 6px -> 10px (+여백 확장) */
         border: none !important; 
         color: #0284C7 !important; 
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.6rem !important;
+        font-size: 0.6rem !important; /* 글자는 더 작게 고정 */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -415,15 +412,15 @@ st.markdown("""<style>
     
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"] {
         border-radius: 6px !important; 
-        min-height: 20px !important;
-        height: 20px !important;
-        padding: 0 6px !important;
+        min-height: 24px !important;  /* 기존 20px -> 24px (+20% 높이) */
+        height: 24px !important;
+        padding: 0 10px !important;   /* 기존 6px -> 10px (+여백 확장) */
         border: none !important; 
         color: #475569 !important; 
         font-weight: 600 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.6rem !important;
+        font-size: 0.6rem !important; /* 글자는 더 작게 고정 */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -542,7 +539,6 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     
-    # 💡 [요청사항 반영] 버튼 순서 변경: 수동센싱 -> 모닝센싱 복귀 -> Help
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
         save_user_settings(st.session_state.current_user, st.session_state.settings)
@@ -726,22 +722,20 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [요청사항 반영] 버튼 비율을 더 여유있게 (제목칸 확보)
-                    act_c1, act_c2, act_c3 = st.columns([6.8, 1.6, 1.6])
+                    # 💡 가로 공간(20% 증가)을 위한 비율 재조정
+                    act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
                     with act_c1:
                         st.markdown(f"""
-                        <div style='height: 20px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
+                        <div style='height: 24px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
                             <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
                             <span style='font-size: 0.7rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        # 💡 [요청사항 반영] 클립보드 복사 실행
                         if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
-                            st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
+                            show_share_modal(item)
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -770,20 +764,19 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    act_c1, act_c2, act_c3 = st.columns([6.8, 1.6, 1.6])
+                    act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
                     with act_c1:
                         st.markdown(f"""
-                        <div style='height: 20px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
+                        <div style='height: 24px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
                             <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
                             <span style='font-size: 0.7rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
                         if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
-                            st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
+                            show_share_modal(item)
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -822,13 +815,12 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    act_c1, act_c2, act_c3 = st.columns([6.8, 1.6, 1.6])
+                    act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
                     with act_c1:
-                        st.markdown(f"<div style='height: 20px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='height: 24px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
                         if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
-                            st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
+                            show_share_modal(item)
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
