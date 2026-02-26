@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import feedparser
 from google import genai
 from google.genai import types
@@ -16,6 +17,25 @@ from collections import Counter
 
 # 프롬프트 외부 연동
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
+
+# ==========================================
+# 📋 [유틸] 클립보드 복사 함수 (JS Injection)
+# ==========================================
+def copy_to_clipboard(title, summary, link):
+    copy_text = f"[NGEPT Insight]\n제목: {title}\n요약: {summary}\n원문: {link}"
+    copy_text = copy_text.replace('`', '\\`').replace('$', '\\$')
+    js_code = f"""
+    <script>
+    const textArea = document.createElement("textarea");
+    textArea.value = `{copy_text}`;
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {{ document.execCommand('copy'); }} 
+    catch (err) {{ console.error('Copy failed', err); }}
+    document.body.removeChild(textArea);
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
 
 # ==========================================
 # 🎨 [애니메이션] 스피너 SVG UI 컴포넌트
@@ -113,7 +133,6 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
                 except Exception as e:
                     st.error(f"🚨 분석 중 오류가 발생했습니다: {e}")
 
-# 💡 [신규] 브라우저 복사 버그를 해결한 확실한 클립보드용 모달
 @st.dialog("📤 기사 정보 공유", width="small")
 def show_share_modal(item):
     title = item.get("insight_title", item.get("title_en", ""))
@@ -204,21 +223,14 @@ def show_help_modal():
     st.markdown(html_content, unsafe_allow_html=True)
 
 # ==========================================
-# 📡 [수집 및 AI 필터링 엔진 (디버깅 모드)]
+# 📡 [수집 및 AI 필터링 엔진]
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
     articles = []
     try:
-        print(f"\n📡 [수집 시작] {f['name']} ({f['url']})")
         d = feedparser.parse(f["url"])
-        
-        if not d.entries:
-            print(f"⚠️ [경고] {f['name']} - 피드에서 읽어온 기사가 0개입니다!")
-            return []
-            
-        print(f"🔍 {f['name']} - 총 {len(d.entries)}개의 기사 발견!")
-        
+        if not d.entries: return []
         for entry in d.entries[:15]:
             dt = entry.get('published_parsed') or entry.get('updated_parsed')
             if not dt: continue
@@ -248,12 +260,8 @@ def fetch_raw_news(args):
                 "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300], 
                 "thumbnail": thumbnail
             })
-            
-        print(f"✅ [수집 완료] {f['name']} - 최종 {len(articles)}개 기사 통과 및 확보!")
-        
     except Exception as e:
-        print(f"🚨 [에러 발생] {f['name']} 수집 중 치명적 오류: {e}")
-        
+        pass
     return articles
 
 def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=None):
@@ -389,18 +397,18 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 💡 [핵심] 메인 카드 안의 액션 버튼만 타겟팅하여 높이 10%, 가로 20% 키우고 글자는 작게 유지 */
+    /* 💡 [핵심] 메인 카드 안의 액션 버튼 타겟팅 - 글자 크기 20% 축소 (0.48rem) & 버튼 크기 미세 조정 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
-        min-height: 24px !important;  /* 기존 20px -> 24px (+20% 높이) */
+        min-height: 24px !important;  
         height: 24px !important;
-        padding: 0 10px !important;   /* 기존 6px -> 10px (+여백 확장) */
+        padding: 0 10px !important;   
         border: none !important; 
         color: #0284C7 !important; 
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.6rem !important; /* 글자는 더 작게 고정 */
+        font-size: 0.48rem !important; /* 💡 0.6rem -> 0.48rem (20% 축소) */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -412,15 +420,15 @@ st.markdown("""<style>
     
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"] {
         border-radius: 6px !important; 
-        min-height: 24px !important;  /* 기존 20px -> 24px (+20% 높이) */
+        min-height: 24px !important;  
         height: 24px !important;
-        padding: 0 10px !important;   /* 기존 6px -> 10px (+여백 확장) */
+        padding: 0 10px !important;   
         border: none !important; 
         color: #475569 !important; 
-        font-weight: 600 !important; 
+        font-weight: 700 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.6rem !important; /* 글자는 더 작게 고정 */
+        font-size: 0.48rem !important; /* 💡 0.6rem -> 0.48rem (20% 축소) */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -428,6 +436,43 @@ st.markdown("""<style>
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"]:hover {
         background-color: #E2E8F0 !important; 
         color: #0F172A !important; 
+    }
+    
+    /* 💡 [신규] Dribbble 스타일 필터 칩 (Streamlit Radio Button 해킹) */
+    [data-testid="stRadio"] { margin-bottom: 20px; }
+    [data-testid="stRadio"] div[role="radiogroup"] { gap: 10px; flex-wrap: wrap; }
+    [data-testid="stRadio"] div[role="radiogroup"] label {
+        background-color: #F8FAFC !important;
+        border: 1px solid #E2E8F0 !important;
+        padding: 6px 16px !important;
+        border-radius: 24px !important;
+        cursor: pointer !important;
+        transition: all 0.2s ease !important;
+        margin: 0 !important;
+    }
+    [data-testid="stRadio"] div[role="radiogroup"] label:hover {
+        background-color: #F1F5F9 !important;
+        border-color: #CBD5E1 !important;
+    }
+    [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"] div:first-child {
+        display: none !important; /* 기본 동그라미 숨김 */
+    }
+    [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
+    [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
+        background-color: #0F172A !important;
+        border-color: #0F172A !important;
+    }
+    [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] p,
+    [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] p {
+        color: #FFFFFF !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stRadio"] div[role="radiogroup"] label p {
+        color: #475569;
+        font-weight: 600;
+        font-size: 0.85rem;
+        margin: 0;
+        padding: 0;
     }
 
     .stTextInput>div>div>input { border-radius: 10px; }
@@ -722,7 +767,6 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 가로 공간(20% 증가)을 위한 비율 재조정
                     act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
                     with act_c1:
                         st.markdown(f"""
@@ -735,7 +779,7 @@ else:
                         if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -776,51 +820,64 @@ else:
                         if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream 
+    # 🌊 Section 3: Sensing Stream (with Dribbble Filter)
     # ==========================
     if stream_news:
         st.divider()
-        all_tags = []
-        for n in news_list:
-            if isinstance(n.get('keywords'), list): all_tags.extend([str(k).upper() for k in n['keywords']])
-        top_tags = [tag for tag, count in Counter(all_tags).most_common(8)]
-        tag_html = " ".join([f"<span class='badge-tag'>#{t}</span>" for t in top_tags])
-        
         st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
-        if tag_html: st.markdown(f"<div style='margin-bottom: 20px;'>{tag_html}</div>", unsafe_allow_html=True)
+        
+        # 💡 [신규] Dribbble 스타일 칩(Pill) 라디오 버튼 필터 
+        filter_options = ["✨ 전체보기", "🌐 글로벌 혁신", "🇨🇳 중국 동향", "🤖 일본/로보틱스", "💬 커뮤니티 화제"]
+        selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed")
+        
+        filtered_stream = []
+        for item in stream_news:
+            if selected_filter == "✨ 전체보기":
+                filtered_stream.append(item)
+            elif selected_filter == "🌐 글로벌 혁신" and item.get('category') == 'Global Innovation':
+                filtered_stream.append(item)
+            elif selected_filter == "🇨🇳 중국 동향" and item.get('category') == 'China & East Asia':
+                filtered_stream.append(item)
+            elif selected_filter == "🤖 일본/로보틱스" and item.get('category') == 'Japan & Robotics':
+                filtered_stream.append(item)
+            elif selected_filter == "💬 커뮤니티 화제" and item.get('community_buzz'):
+                filtered_stream.append(item)
 
-        stream_cols = st.columns(3)
-        for i, item in enumerate(stream_news):
-            with stream_cols[i % 3]:
-                with st.container(border=True):
-                    img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
-                    buzz_tag = "<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>" if item.get('community_buzz') else ""
-                    
-                    html_content = (
-                        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
-                        '<div style="display:flex; align-items:center; gap:8px;">'
-                        '<div style="width:24px; height:24px; background:#f0f2f5; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:12px;">📰</div>'
-                        f'<a href="{item.get("link", "#")}" target="_blank" style="font-weight:800; font-size:0.95rem; color:#1E293B; text-decoration:none;">{item.get("source", "Source")}</a>'
-                        '</div><div>'
-                        f'<span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item.get("score", 0)}%</span> '
-                        f'{buzz_tag}'
-                        '</div></div>'
-                        f'<img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; display:block; margin-bottom:12px;" onerror="this.src=\'https://via.placeholder.com/600x338?text=No+Image\';">'
-                        f'<div style="font-weight:700; font-size:1.05rem; line-height:1.4; color:#262626; margin-bottom:8px;">💡 {item.get("insight_title", item.get("title_en", ""))}</div>'
-                        f'<div style="font-size:0.85rem; color:#444; line-height:1.5; margin-bottom:12px;">{item.get("core_summary", item.get("summary_ko", ""))}</div>'
-                    )
-                    st.markdown(html_content, unsafe_allow_html=True)
-                    
-                    act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
-                    with act_c1:
-                        st.markdown(f"<div style='height: 24px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
-                    with act_c2:
-                        if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            show_share_modal(item)
-                    with act_c3:
-                        if st.button("AI분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
-                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
+        if not filtered_stream:
+            st.info("해당 조건에 맞는 기사가 없습니다.")
+        else:
+            stream_cols = st.columns(3)
+            for i, item in enumerate(filtered_stream):
+                with stream_cols[i % 3]:
+                    with st.container(border=True):
+                        img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
+                        buzz_tag = "<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>" if item.get('community_buzz') else ""
+                        
+                        html_content = (
+                            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
+                            '<div style="display:flex; align-items:center; gap:8px;">'
+                            '<div style="width:24px; height:24px; background:#f0f2f5; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:12px;">📰</div>'
+                            f'<a href="{item.get("link", "#")}" target="_blank" style="font-weight:800; font-size:0.95rem; color:#1E293B; text-decoration:none;">{item.get("source", "Source")}</a>'
+                            '</div><div>'
+                            f'<span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item.get("score", 0)}%</span> '
+                            f'{buzz_tag}'
+                            '</div></div>'
+                            f'<img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; display:block; margin-bottom:12px;" onerror="this.src=\'https://via.placeholder.com/600x338?text=No+Image\';">'
+                            f'<div style="font-weight:700; font-size:1.05rem; line-height:1.4; color:#262626; margin-bottom:8px;">💡 {item.get("insight_title", item.get("title_en", ""))}</div>'
+                            f'<div style="font-size:0.85rem; color:#444; line-height:1.5; margin-bottom:12px;">{item.get("core_summary", item.get("summary_ko", ""))}</div>'
+                        )
+                        st.markdown(html_content, unsafe_allow_html=True)
+                        
+                        act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
+                        with act_c1:
+                            st.markdown(f"<div style='height: 24px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
+                        with act_c2:
+                            if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                                show_share_modal(item)
+                        with act_c3:
+                            if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                                show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
