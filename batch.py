@@ -7,75 +7,32 @@ import re
 from datetime import datetime, timedelta
 import time
 from deep_translator import GoogleTranslator
-import requests
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
 
-# 👇 새롭게 추가된 마법의 1줄! (여기엔 필터 프롬프트만 필요합니다)
+# 외부 프롬프트
 from prompts import DEFAULT_FILTER_PROMPT
 
-# 💡 GitHub Secrets에서 API 키를 가져옵니다.
-API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# ==========================================
-# ❌ [기존 코드 삭제] 아래에 있던 길고 긴 
-# DEFAULT_FILTER_PROMPT 텍스트 덩어리를 
-# 전부 통째로 지워주세요! 
-# ==========================================
-
-def safe_translate(text):
-    if not text: return ""
-    try: return GoogleTranslator(source='auto', target='ko').translate(text)
-    except: return text
-
-def fetch_raw_news(args):
-    cat, f, limit = args
-    articles = []
-    try:
-        d = feedparser.parse(f["url"])
-        for entry in d.entries[:15]:
-            dt = entry.get('published_parsed') or entry.get('updated_parsed')
-            if not dt: continue
-            p_date = datetime.fromtimestamp(time.mktime(dt))
-            if p_date < limit: continue
-            
-            thumbnail = ""
-            if 'media_content' in entry and len(entry.media_content) > 0:
-                thumbnail = entry.media_content[0].get('url', '')
-            elif 'media_thumbnail' in entry and len(entry.media_thumbnail) > 0:
-                thumbnail = entry.media_thumbnail[0].get('url', '')
-                
-            articles.append({
-                "id": hashlib.md5(entry.link.encode()).hexdigest()[:12],
-                "title_en": entry.title, "link": entry.link, "source": f["name"],
-                "category": cat, "date_obj": p_date.isoformat(), # JSON 저장을 위해 문자열 변환
-                "date": p_date.strftime("%Y.%m.%d"),
-                "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300],
-                "thumbnail": thumbnail
-            })
-    except: pass
-    return articles
-
-def run_batch_sensing():
-    print("🚀 배치 센싱 작업을 시작합니다...")
-    if not API_KEY:
-        print("❌ API 키가 없습니다. 작업을 중단합니다.")
+def run_morning_batch():
+    print("🌅 [모닝 센싱] 자동화 봇 작동을 시작합니다...")
+    
+    # 1. GitHub Secrets 등 환경변수에서 API 키를 가져옵니다.
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        print("🚨 에러: GEMINI_API_KEY 환경변수가 없습니다.")
         return
 
-    # 채널 로드
+    # 2. 채널 파일 읽기
     try:
         with open("channels.json", "r", encoding="utf-8") as f:
             channels_data = json.load(f)
-    except:
-        print("❌ channels.json 파일을 찾을 수 없습니다.")
+    except Exception as e:
+        print(f"🚨 에러: channels.json 파일을 읽을 수 없습니다. {e}")
         return
 
-    # 설정값 (고정)
-    sensing_period = 3
-    max_articles = 60
-    filter_weight = 70
-    limit = datetime.now() - timedelta(days=sensing_period)
-
+    # 최근 3일치 기사만 1차 수집
+    limit = datetime.now() - timedelta(days=3)
     active_tasks = []
     for cat, feeds in channels_data.items():
         for f in feeds:
@@ -83,49 +40,138 @@ def run_batch_sensing():
                 active_tasks.append((cat, f, limit))
 
     raw_news = []
-    print(f"📡 {len(active_tasks)}개 채널에서 뉴스를 수집합니다...")
-    with ThreadPoolExecutor(max_workers=40) as executor:
-        futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
-        for f in as_completed(futures): raw_news.extend(f.result())
-
-    raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:max_articles]
     
-    client = genai.Client(api_key=API_KEY)
-    filtered_list = []
+    def fetch_worker(args):
+        cat, f, lim = args
+        articles = []
+        try:
+            d = feedparser.parse(f["url"])
+            if not d.entries: return []
+            for entry in d.entries[:15]:
+                dt = entry.get('published_parsed') or entry.get('updated_parsed')
+                if not dt: continue
+                p_date = datetime.fromtimestamp(time.mktime(dt))
+                if p_date < lim: continue
+                
+                thumbnail = ""
+                if 'media_content' in entry and len(entry.media_content) > 0: thumbnail = entry.media_content[0].get('url', '')
+                elif 'media_thumbnail' in entry and len(entry.media_thumbnail) > 0: thumbnail = entry.media_thumbnail[0].get('url', '')
+                if not thumbnail:
+                    html_content = str(entry.get('content', [{}])[0].get('value', '')) + str(entry.get('summary', ''))
+                    soup = BeautifulSoup(html_content, "html.parser")
+                    img_tag = soup.find('img')
+                    if img_tag and img_tag.get('src'): thumbnail = img_tag.get('src')
 
+                articles.append({
+                    "id": hashlib.md5(entry.link.encode()).hexdigest()[:12], 
+                    "title_en": entry.title, 
+                    "link": entry.link, 
+                    "source": f["name"],
+                    "category": cat, 
+                    "date_obj": p_date.isoformat(), 
+                    "date": p_date.strftime("%Y.%m.%d"),
+                    "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300], 
+                    "thumbnail": thumbnail
+                })
+        except: pass
+        return articles
+
+    print(f"📡 {len(active_tasks)}개의 채널에서 기사 수집 중...")
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        for f in as_completed([executor.submit(fetch_worker, t) for t in active_tasks]):
+            raw_news.extend(f.result())
+            
+    # AI 할당량 관리를 위해 100개만 자르기
+    raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:100]
+    print(f"✅ 총 {len(raw_news)}개 기사 1차 확보 완료. AI 채점을 시작합니다.")
+
+    client = genai.Client(api_key=api_key)
+    processed_items = []
+    
     def ai_scoring_worker(item):
         try:
-            score_query = f"{DEFAULT_FILTER_PROMPT}\n\n[평가 대상]\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
+            import random
+            time.sleep(random.uniform(0.5, 1.5)) # API 제한 회피
+            score_query = f"{DEFAULT_FILTER_PROMPT}\n\n[평가 대상]\n매체: {item['source']}\n링크: {item['link']}\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
             response = client.models.generate_content(model="gemini-2.5-flash", contents=score_query)
-            res = response.text.strip()
-            if res.startswith("```json"): res = res[7:-3].strip()
-            elif res.startswith("```"): res = res[3:-3].strip()
             
-            parsed_data = json.loads(res)
-            item['score'] = int(parsed_data.get('score', 50))
-            item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
-            item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
-        except Exception:
+            json_match = re.search(r'\{.*\}', response.text.strip(), re.DOTALL)
+            if json_match:
+                parsed_data = json.loads(json_match.group())
+                url_lower = item['link'].lower()
+                source_lower = item['source'].lower()
+                community_domains = ['reddit', 'v2ex', 'hacker news', 'ycombinator', 'clien', 'dcinside', 'blind']
+                
+                if any(d in url_lower or d in source_lower for d in community_domains):
+                    item['content_type'] = 'community'
+                else:
+                    item['content_type'] = parsed_data.get('content_type', 'news')
+                
+                item['score'] = int(parsed_data.get('score', 0)) if item['content_type'] == 'news' else 0
+                item['insight_title'] = parsed_data.get('insight_title') or item['title_en']
+                item['core_summary'] = parsed_data.get('core_summary') or item['summary_en'][:100]
+                item['keywords'] = parsed_data.get('keywords', [])
+            else: raise ValueError("No JSON")
+        except:
+            item['content_type'] = 'news'
             item['score'] = 50 
-            item['insight_title'] = safe_translate(item['title_en'])
-            item['core_summary'] = safe_translate(item['summary_en'])
+            item['insight_title'] = item['title_en']
+            item['core_summary'] = item['summary_en'][:100]
+            item['keywords'] = []
+            
+        # 영문 번역 (무료 번역기 한도 우회)
+        try:
+            item['insight_title'] = GoogleTranslator(source='auto', target='ko').translate(item['insight_title'])
+            item['core_summary'] = GoogleTranslator(source='auto', target='ko').translate(item['core_summary'])
+        except: pass
+        
         return item
 
-    print(f"🧠 {len(raw_news)}개 기사에 대해 AI 필터링을 시작합니다...")
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        future_to_item = {executor.submit(ai_scoring_worker, item): item for item in raw_news}
-        for future in as_completed(future_to_item):
-            item = future.result()
-            if item['score'] >= filter_weight:
-                filtered_list.append(item)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
+            processed_items.append(future.result())
+            print(f"🧠 분석 진행 중... ({i+1}/{len(raw_news)})")
 
-    final_news = sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
+    # 소셜 리스닝 버즈 반영
+    community_keywords = []
+    for item in processed_items:
+        if item.get('content_type') == 'community':
+            community_keywords.extend([str(k).upper() for k in item.get('keywords', [])])
+            
+    comm_kw_counts = Counter(community_keywords)
+    hot_comm_keywords = set([k for k, v in comm_kw_counts.items() if v >= 1])
+
+    final_pool = []
+    for item in processed_items:
+        if item.get('content_type') == 'news':
+            news_kws = set([str(k).upper() for k in item.get('keywords', [])])
+            overlap = news_kws.intersection(hot_comm_keywords)
+            if overlap:
+                item['score'] = min(100, item['score'] + (len(overlap) * 5))
+                item['community_buzz'] = True
+                item['buzz_words'] = list(overlap)
+            else:
+                item['community_buzz'] = False
+            final_pool.append(item)
+
+    final_pool = sorted(final_pool, key=lambda x: x.get('score', 0), reverse=True)
     
-    # 💾 결과물을 JSON 파일로 저장합니다.
-    with open("today_news.json", "w", encoding="utf-8") as f:
-        json.dump(final_news, f, ensure_ascii=False, indent=4)
+    # 3. 파일 저장 (today_news.json은 앱이 바로 읽을 용도, archive는 날짜별 기록 용도)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    archive_dir = "archive"
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir)
         
-    print(f"✅ 배치 작업 완료! 총 {len(final_news)}개의 기사가 today_news.json에 저장되었습니다.")
+    try:
+        with open("today_news.json", "w", encoding="utf-8") as f:
+            json.dump(final_pool, f, ensure_ascii=False, indent=4)
+        print("✅ today_news.json 저장 완료")
+        
+        with open(f"{archive_dir}/morning_sensing_{today_str}.json", "w", encoding="utf-8") as f:
+            json.dump(final_pool, f, ensure_ascii=False, indent=4)
+        print(f"✅ 아카이브 저장 완료: morning_sensing_{today_str}.json")
+    except Exception as e:
+        print(f"🚨 저장 실패: {e}")
 
 if __name__ == "__main__":
-    run_batch_sensing()
+    run_morning_batch()
