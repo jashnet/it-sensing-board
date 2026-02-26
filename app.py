@@ -736,7 +736,7 @@ else:
                     act_c1, act_c2, act_c3 = st.columns([6, 1.8, 2.2])
                     with act_c1:
                         st.markdown(f"""
-                        <div style='height: 28px; display: flex; align-items: center; font-size: 0.65rem; margin-top: 1px;'>
+                        <div style='height: 28px; display: flex; align-items: center; font-size: 0.95rem; margin-top: 2px;'>
                             <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
                             <span style='font-size: 0.8rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
