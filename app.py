@@ -14,15 +14,8 @@ import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
-# 👇 새롭게 추가된 마법의 1줄!
+# 👇 프롬프트 외부 연동
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
-
-# ==========================================
-# ❌ [기존 코드 삭제] 아래에 있던 길고 긴 GEMS_PERSONA와 
-# DEFAULT_FILTER_PROMPT 텍스트 덩어리를 
-# 전부 통째로 지워주세요! (약 50줄)
-# ==========================================
-
 
 # ==========================================
 # 📂 [데이터 관리] 채널 파일 입출력 로직
@@ -153,14 +146,11 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
 
     pb = st.progress(0)
     st_text = st.empty()
-    
-    # 💡 Streamlit 명찰 복사 (터미널 에러 방지)
     current_ctx = get_script_run_ctx()
 
     def ai_scoring_worker(item):
         add_script_run_ctx(ctx=current_ctx)
         try:
-            # 💡 [핵심 최적화 1] 구글 서버 과부하 방지를 위해 요청 전 0.1~1.5초 사이의 랜덤 휴식(Jitter) 부여
             import random
             time.sleep(random.uniform(0.1, 1.5))
 
@@ -170,8 +160,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
                 contents=score_query
             )
             res = response.text.strip()
-            
-            # 💡 [핵심 최적화 2] AI가 쓸데없는 말을 붙여도 순수 JSON `{ ... }` 부분만 완벽하게 적출
             json_match = re.search(r'\{.*\}', res, re.DOTALL)
             
             if json_match:
@@ -183,14 +171,12 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
                 raise ValueError("JSON 형식을 찾을 수 없음")
                 
         except Exception as e:
-            # 💡 에러 발생 시 터미널에 원인을 출력하여 팀장님이 눈으로 확인할 수 있게 함
             print(f"❌ 분석 실패 [{item['title_en'][:15]}...]: {e}")
             item['score'] = 50 
             item['insight_title'] = safe_translate(item['title_en'])
             item['core_summary'] = safe_translate(item['summary_en'])
         return item
 
-    # 💡 [핵심 최적화 3] 구글 API 할당량 초과(429 에러)를 막기 위해 AI 스레드를 10개로 제한
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_item = {executor.submit(ai_scoring_worker, item): item for item in raw_news}
         
@@ -199,7 +185,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             pb.progress((i + 1) / len(raw_news))
             
             item = future.result()
-            # 필터 점수를 넘긴 기사만 최종 리스트에 추가
             if item['score'] >= _weight:
                 filtered_list.append(item)
                 
@@ -208,28 +193,35 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     return sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
 
 # ==========================================
-# 🖥️ [UI] 메인 화면 렌더링 (Top Picks + Stream)
+# 🖥️ [UI] 메인 화면 렌더링 (MUST KNOW + Top Picks + Stream)
 # ==========================================
 st.set_page_config(page_title="NGEPT Strategy Hub", layout="wide")
 
 st.markdown("""<style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     
-    /* --- Top Picks 카드 스타일 --- */
-    .top-pick-card {
+    /* 공통 히어로 카드 오버레이 스타일 (MUST KNOW & Top Picks 호환) */
+    .hero-card {
         position: relative; border-radius: 16px; overflow: hidden;
         aspect-ratio: 4/3; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         transition: transform 0.2s;
     }
-    .top-pick-card:hover { transform: translateY(-3px); }
-    .top-pick-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-    .top-pick-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.7) 100%); z-index: 2; }
-    .top-pick-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 20px; z-index: 3; color: white; }
-    .top-pick-score { display: inline-block; padding: 4px 10px; background: #0095f6; color: white; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 8px; }
-    .top-pick-title { font-size: 1.3rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-    .top-pick-source { font-size: 0.85rem; opacity: 0.9; }
+    .hero-card:hover { transform: translateY(-3px); }
+    .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+    .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
+    .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 20px; z-index: 3; color: white; }
+    
+    /* 뱃지 스타일 */
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 8px; margin-right: 6px; }
+    .badge-fire { background: #e74c3c; color: white; }
+    .badge-score { background: #34495e; color: white; }
+    .badge-global { background: #9b59b6; color: white; }
+    .badge-china { background: #e67e22; color: white; }
+    
+    .hero-title { font-size: 1.2rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+    .hero-source { font-size: 0.85rem; opacity: 0.9; }
 
-    /* --- Sensing Stream 카드 스타일 --- */
+    /* Sensing Stream 카드 스타일 */
     .stream-card { background: #ffffff; border: 1px solid #dbdbdb; border-radius: 12px; margin-bottom: 30px; overflow: hidden; }
     .stream-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #efefef; }
     .source-badge { display: flex; align-items: center; gap: 10px; }
@@ -242,7 +234,8 @@ st.markdown("""<style>
     .stream-text { font-size: 0.9rem; color: #444; line-height: 1.5; margin-bottom: 16px; }
     .read-more { color: #0095f6; font-weight: 600; text-decoration: none; font-size: 0.9rem; }
     
-    .section-header { font-size: 1.5rem; font-weight: 700; margin: 30px 0 20px 0; display: flex; align-items: center; gap: 10px; }
+    .section-header { font-size: 1.5rem; font-weight: 700; margin: 30px 0 20px 0; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+    .section-desc { font-size: 1rem; color: #888; font-weight: normal; margin-left: 5px; }
 </style>""", unsafe_allow_html=True)
 
 if "channels" not in st.session_state:
@@ -260,10 +253,9 @@ with st.sidebar:
 
     st.divider()
     
-    # 💡 [보안 및 편의성 강화] Streamlit Secrets 자동 연동 로직
     if "GEMINI_API_KEY" in st.secrets:
         st.session_state.settings["api_key"] = st.secrets["GEMINI_API_KEY"]
-        st.success("🔒 시스템 API Key 자동 연동 완료")
+        st.success("🔒 시스템 API Key 연동 완료")
     else:
         curr_key = st.session_state.settings.get("api_key", "").strip()
         if not st.session_state.get("editing_key", False) and curr_key:
@@ -280,7 +272,6 @@ with st.sidebar:
     st.divider()
     
     st.subheader("📂 채널 관리 (Channels.json)")
-    
     for cat in st.session_state.channels.keys():
         if cat not in st.session_state.settings["category_active"]:
             st.session_state.settings["category_active"][cat] = True
@@ -315,31 +306,29 @@ with st.sidebar:
                         st.rerun()
 
     st.divider()
-
     st.subheader("🎛️ 기본 필터 설정")
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"])
     st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"])
     st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"])
 
     with st.expander("⚙️ 고급 프롬프트 설정", expanded=False):
-        f_prompt = st.text_area("🔍 필터 프롬프트 (JSON 출력)", value=st.session_state.settings["filter_prompt"], height=200)
+        f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"], height=200)
         st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
 
-    # 💡 [하이브리드 엔진] 수동 실행 및 자동 복귀 버튼
-    st.info("💡 평소엔 아침 자동 수집본을 보여줍니다. 설정을 변경했거나 당장 최신 뉴스를 보려면 아래 버튼을 누르세요.")
+    st.info("💡 평소엔 아침 자동 수집본을 보여줍니다. 즉시 최신 뉴스를 보려면 아래 버튼을 누르세요.")
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
         st.session_state.settings["filter_weight"] = f_weight
         save_user_settings(u_id, st.session_state.settings)
         
-        with st.spinner("📡 현재 기준 최신 기사 수집 및 AI 분석 중... (약 30초 소요)"):
+        with st.spinner("📡 현재 기준 최신 기사 수집 및 AI 분석 중..."):
             live_result = get_filtered_news(
                 st.session_state.settings, 
                 st.session_state.channels, 
                 st.session_state.settings["filter_prompt"], 
                 st.session_state.settings["filter_weight"]
             )
-            st.session_state.manual_news = live_result # 결과를 세션에 저장
+            st.session_state.manual_news = live_result
             st.success("✅ 실시간 업데이트 완료!")
             time.sleep(1)
             st.rerun()
@@ -348,21 +337,6 @@ with st.sidebar:
         if "manual_news" in st.session_state:
             del st.session_state["manual_news"]
         st.rerun()
-        
-    st.divider()
-    
-    if st.button("🔍 내 API 키 허용 모델 확인하기"):
-        test_key = st.session_state.settings.get("api_key", "").strip()
-        if not test_key:
-            st.error("⚠️ 위젯에서 API Key를 먼저 입력하고 [💾 저장]을 눌러주세요.")
-        else:
-            try:
-                temp_client = get_ai_client(test_key)
-                models = temp_client.models.list()
-                model_names = [m.name for m in models]
-                st.success(f"✅ 사용 가능한 모델 목록: {model_names}")
-            except Exception as e:
-                st.error(f"🚨 조회 실패: {e}")
 
 # ==========================================
 # 2. 메인 컨텐츠 영역
@@ -370,7 +344,6 @@ with st.sidebar:
 st.markdown("<h1 style='text-align:center;'>NOD Strategy Hub</h1>", unsafe_allow_html=True)
 st.caption(f"<div style='text-align:center;'>차세대 경험기획팀을 위한 Gems 통합 인사이트 보드</div><br>", unsafe_allow_html=True)
 
-# 💡 [하이브리드 로딩 로직] 수동 데이터가 있으면 우선 표시, 없으면 JSON 읽기
 news_list = []
 if "manual_news" in st.session_state:
     news_list = st.session_state.manual_news
@@ -381,84 +354,176 @@ elif os.path.exists("today_news.json"):
             news_list = json.load(f)
         st.info("🕒 **Batch Mode:** 매일 아침 자동 수집된 데일리 브리핑입니다.")
     except Exception as e:
-        st.error("뉴스 데이터를 읽어오는 데 실패했습니다.")
+        pass
 
 if not news_list:
     st.warning("📭 보여줄 뉴스가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
 else:
-    top_picks = news_list[:6]
-    stream_news = news_list[6:]
+    # 💡 [큐레이션 알고리즘] 기사 군집화 및 분배
+    def get_word_set(text): 
+        # 특수문자를 제외한 영문/숫자 단어 집합 생성
+        return set(re.findall(r'\w+', str(text).lower()))
+
+    clusters = []
+    for item in news_list:
+        item_words = get_word_set(item.get('title_en', ''))
+        if not item_words: continue
+
+        added = False
+        for cluster in clusters:
+            cluster_words = get_word_set(cluster[0].get('title_en', ''))
+            if not cluster_words: continue
+            
+            overlap = len(item_words.intersection(cluster_words))
+            min_len = min(len(item_words), len(cluster_words))
+            # 주요 단어가 40% 이상 겹치면 같은 이슈로 묶음
+            if min_len > 0 and overlap / min_len >= 0.4:
+                cluster.append(item)
+                added = True
+                break
+        
+        if not added:
+            clusters.append([item])
+
+    # 1순위: 묶인 기사 수(중복도), 2순위: 그 안에서 가장 높은 AI 점수
+    clusters.sort(key=lambda x: (len(x), max([a.get('score', 0) for a in x])), reverse=True)
+
+    must_know_items = []
+    used_ids = set()
+
+    # 1. 🔥 MUST KNOW 추출 (최대 3개)
+    for cluster in clusters[:3]:
+        # 군집 내에서 가장 점수가 높은 기사를 대표로 선정
+        best_item = max(cluster, key=lambda x: x.get('score', 0))
+        best_item['dup_count'] = len(cluster)
+        must_know_items.append(best_item)
+        # 같은 이슈의 다른 기사들은 이후 피드에 도배되지 않도록 블랙리스트 처리
+        for a in cluster: used_ids.add(a['id'])
+
+    remaining_news = [a for a in news_list if a['id'] not in used_ids]
+
+    # 2. 🏆 Top Picks 추출 (Global 3개, China 3개)
+    global_picks = [a for a in remaining_news if a['category'] == 'Global Innovation'][:3]
+    china_picks = [a for a in remaining_news if a['category'] == 'China & East Asia'][:3]
+    top_picks = global_picks + china_picks
+    for a in top_picks: used_ids.add(a['id'])
+
+    # 만약 채널 부족 등으로 6개가 다 안 채워지면 점수순으로 보충
+    if len(top_picks) < 6:
+        pool = [a for a in remaining_news if a['id'] not in used_ids]
+        # 점수 내림차순 정렬
+        pool.sort(key=lambda x: x.get('score', 0), reverse=True)
+        fillers = pool[:6 - len(top_picks)]
+        top_picks += fillers
+        for a in fillers: used_ids.add(a['id'])
+
+    # 3. 🌊 Sensing Stream (나머지 전부)
+    stream_news = [a for a in remaining_news if a['id'] not in used_ids]
 
     # ==========================
-    # 🏆 Section 1: Today's Top Picks
+    # 🔥 Section 1: MUST KNOW
     # ==========================
-    st.markdown("<div class='section-header'>🏆 Today's Top Picks</div>", unsafe_allow_html=True)
-    
-    top_cols = st.columns(3)
-    for i, item in enumerate(top_picks):
-        with top_cols[i % 3]:
-            img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=800"
-            title_text = item.get('insight_title', item['title_en'])
-            
-            html_card = f"""
-            <a href="{item['link']}" target="_blank" style="text-decoration:none;">
-                <div class="top-pick-card">
-                    <img src="{img_src}" class="top-pick-bg" loading="lazy" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=NOD+Insight';">
-                    <div class="top-pick-overlay"></div>
-                    <div class="top-pick-content">
-                        <span class="top-pick-score">MATCH {item['score']}%</span>
-                        <div class="top-pick-title">{title_text}</div>
-                        <div class="top-pick-source">📰 {item['source']}</div>
+    if must_know_items:
+        st.markdown("<div class='section-header'>🔥 MUST KNOW <span class='section-desc'>여러 매체에서 동시다발적으로 보도 중인 핵심 이슈</span></div>", unsafe_allow_html=True)
+        cols = st.columns(3)
+        for i, item in enumerate(must_know_items):
+            with cols[i % 3]:
+                img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=800"
+                # 2개 이상 중복 시 뱃지 표시, 1개면 핵심 트렌드로 표시
+                dup_badge = f"🔥 {item['dup_count']}개 매체 중복 보도" if item.get('dup_count', 1) > 1 else "🔥 핵심 트렌드"
+                
+                html_card = f"""
+                <a href="{item['link']}" target="_blank" style="text-decoration:none;">
+                    <div class="hero-card" style="border: 2px solid #e74c3c;">
+                        <img src="{img_src}" class="hero-bg" loading="lazy" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW';">
+                        <div class="hero-overlay"></div>
+                        <div class="hero-content">
+                            <span class="badge badge-fire">{dup_badge}</span>
+                            <span class="badge badge-score">MATCH {item['score']}%</span>
+                            <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
+                            <div class="hero-source">📰 {item['source']}</div>
+                        </div>
+                    </div>
+                </a>
+                """
+                st.markdown(html_card, unsafe_allow_html=True)
+
+    # ==========================
+    # 🏆 Section 2: Today's Top Picks
+    # ==========================
+    if top_picks:
+        st.markdown("<div class='section-header'>🏆 Today's Top Picks <span class='section-desc'>글로벌 & 중국 주요 시그널 (3:3 밸런스)</span></div>", unsafe_allow_html=True)
+        cols = st.columns(3)
+        for i, item in enumerate(top_picks):
+            with cols[i % 3]:
+                img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=800"
+                
+                # 카테고리별 맞춤 뱃지 색상 부여
+                cat_badge = ""
+                if item['category'] == 'Global Innovation': cat_badge = "<span class='badge badge-global'>🌐 Global</span>"
+                elif item['category'] == 'China & East Asia': cat_badge = "<span class='badge badge-china'>🇨🇳 China</span>"
+                else: cat_badge = f"<span class='badge' style='background:#7f8c8d;'>{item['category'][:6]}</span>"
+                
+                html_card = f"""
+                <a href="{item['link']}" target="_blank" style="text-decoration:none;">
+                    <div class="hero-card">
+                        <img src="{img_src}" class="hero-bg" loading="lazy" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=TOP+PICK';">
+                        <div class="hero-overlay"></div>
+                        <div class="hero-content">
+                            {cat_badge}
+                            <span class="badge badge-score">MATCH {item['score']}%</span>
+                            <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
+                            <div class="hero-source">📰 {item['source']}</div>
+                        </div>
+                    </div>
+                </a>
+                """
+                st.markdown(html_card, unsafe_allow_html=True)
+
+    # ==========================
+    # 🌊 Section 3: Sensing Stream
+    # ==========================
+    if stream_news:
+        st.divider()
+        st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
+        stream_cols = st.columns(3)
+        for i, item in enumerate(stream_news):
+            with stream_cols[i % 3]:
+                img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
+                title_text = item.get('insight_title', item['title_en'])
+                summary_text = item.get('core_summary', item.get('summary_ko', ''))
+                
+                html_card = f"""
+                <div class="stream-card">
+                    <div class="stream-header">
+                        <div class="source-badge">
+                            <div class="source-icon">📰</div>
+                            <div class="source-name">{item['source']}</div>
+                        </div>
+                        <span class="stream-score">MATCH {item['score']}%</span>
+                    </div>
+                    <img src="{img_src}" class="stream-img" loading="lazy" onerror="this.src='https://via.placeholder.com/600x338?text=No+Image';">
+                    <div class="stream-body">
+                        <div class="stream-title">💡 {title_text}</div>
+                        <div class="stream-text">{summary_text}</div>
+                        <a href="{item['link']}" target="_blank" class="read-more">원문 기사 읽기 ↗</a>
                     </div>
                 </div>
-            </a>
-            """
-            st.markdown(html_card, unsafe_allow_html=True)
-
-    # ==========================
-    # 🌊 Section 2: Sensing Stream
-    # ==========================
-    st.divider()
-    st.markdown("<div class='section-header'>🌊 Sensing Stream</div>", unsafe_allow_html=True)
-
-    stream_cols = st.columns(3)
-    for i, item in enumerate(stream_news):
-        with stream_cols[i % 3]:
-            img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
-            title_text = item.get('insight_title', item['title_en'])
-            summary_text = item.get('core_summary', item.get('summary_ko', ''))
-            
-            html_card = f"""
-            <div class="stream-card">
-                <div class="stream-header">
-                    <div class="source-badge">
-                        <div class="source-icon">📰</div>
-                        <div class="source-name">{item['source']}</div>
-                    </div>
-                    <span class="stream-score">MATCH {item['score']}%</span>
-                </div>
-                <img src="{img_src}" class="stream-img" loading="lazy" onerror="this.src='https://via.placeholder.com/600x338?text=No+Image';">
-                <div class="stream-body">
-                    <div class="stream-title">💡 {title_text}</div>
-                    <div class="stream-text">{summary_text}</div>
-                    <a href="{item['link']}" target="_blank" class="read-more">원문 기사 읽기 ↗</a>
-                </div>
-            </div>
-            """
-            st.markdown(html_card, unsafe_allow_html=True)
-            
-            if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
-                current_api_key = st.session_state.settings.get("api_key", "").strip()
-                if not current_api_key:
-                    st.warning("⚠️ API Key를 확인해주세요.")
-                else:
-                    client = get_ai_client(current_api_key)
-                    if client:
-                        with st.spinner("💎 수석 전략가가 분석 중입니다..."):
-                            try:
-                                config = types.GenerateContentConfig(system_instruction=GEMS_PERSONA)
-                                prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
-                                response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
-                                st.info(response.text)
-                            except Exception as e:
-                                st.error(f"🚨 분석 오류: {e}")
+                """
+                st.markdown(html_card, unsafe_allow_html=True)
+                
+                if st.button("🔍 Gems Deep Analysis", key=f"btn_{item['id']}", use_container_width=True):
+                    current_api_key = st.session_state.settings.get("api_key", "").strip()
+                    if not current_api_key:
+                        st.warning("⚠️ API Key를 확인해주세요.")
+                    else:
+                        client = get_ai_client(current_api_key)
+                        if client:
+                            with st.spinner("💎 수석 전략가가 분석 중입니다..."):
+                                try:
+                                    config = types.GenerateContentConfig(system_instruction=GEMS_PERSONA)
+                                    prompt = f"{st.session_state.settings['ai_prompt']}\n\n[기사]\n제목: {item['title_en']}\n요약: {item['summary_en']}"
+                                    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt, config=config)
+                                    st.info(response.text)
+                                except Exception as e:
+                                    st.error(f"🚨 분석 오류: {e}")
