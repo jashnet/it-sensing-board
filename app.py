@@ -12,6 +12,7 @@ from deep_translator import GoogleTranslator
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+from collections import Counter
 
 # 프롬프트 외부 연동
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
@@ -24,20 +25,29 @@ CHANNELS_FILE = "channels.json"
 def load_channels_from_file():
     if os.path.exists(CHANNELS_FILE):
         try:
-            with open(CHANNELS_FILE, "r", encoding="utf-8") as f: return json.load(f)
-        except: pass
+            with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            st.error(f"채널 파일을 읽는 중 오류 발생: {e}")
+            return {}
     return {}
 
 def save_channels_to_file(channels_data):
     try:
-        with open(CHANNELS_FILE, "w", encoding="utf-8") as f: json.dump(channels_data, f, ensure_ascii=False, indent=4)
-    except: pass
+        with open(CHANNELS_FILE, "w", encoding="utf-8") as f:
+            json.dump(channels_data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        st.error(f"채널 파일 저장 실패: {e}")
 
 def load_user_settings(user_id):
     fn = f"nod_samsung_user_{user_id}.json"
     default_settings = {
-        "api_key": "", "sensing_period": 3, "max_articles": 60, "filter_weight": 70,
-        "top_picks_count": 6, "top_picks_global_ratio": 50,
+        "api_key": "",
+        "sensing_period": 3,
+        "max_articles": 60,
+        "filter_weight": 70,
+        "top_picks_count": 6,
+        "top_picks_global_ratio": 50,
         "filter_prompt": DEFAULT_FILTER_PROMPT,
         "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True}
@@ -94,7 +104,12 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
             if client:
                 try:
                     config = types.GenerateContentConfig(system_instruction=persona)
-                    analysis_prompt = f"{base_prompt}\n\n[기사 정보]\n제목: {item['title_en']}\n요약: {item['summary_en']}\n\n**[출력 지침 - 절대 준수]**\n1. 리포트가 절대 길어지면 안 됩니다. 2~3줄 이내의 짧은 Bullet Point로 간략하게 핵심만 짚어주세요.\n2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하고, 당장 기획에 적용해볼 만한 참신한 아이디어를 제안해 주세요."
+                    analysis_prompt = f"""
+                    {base_prompt}\n\n[기사 정보]\n제목: {item['title_en']}\n요약: {item['summary_en']}
+                    **[출력 지침 - 절대 준수]**
+                    1. 리포트가 절대 길어지면 안 됩니다. 각 항목은 '2~3줄 이내의 짧은 Bullet Point'로 극도로 간략하게 핵심만 짚어주세요.
+                    2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하고, 이 기사를 바탕으로 스마트 디바이스/UX 기획자가 당장 기획에 적용해볼 만한 구체적이고 참신한 아이디어를 1~2개 제안해 주세요.
+                    """
                     response = client.models.generate_content(model="gemini-2.5-flash", contents=analysis_prompt, config=config)
                     st.markdown(response.text)
                 except Exception as e:
@@ -128,7 +143,7 @@ def manage_channels_modal(cat):
             st.rerun()
 
 # ==========================================
-# 📡 [수집 엔진] 뉴스 크롤링 (썸네일 추출 고도화)
+# 📡 [수집 엔진] 뉴스 크롤링
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
@@ -141,7 +156,6 @@ def fetch_raw_news(args):
             p_date = datetime.fromtimestamp(time.mktime(dt))
             if p_date < limit: continue
             
-            # 💡 [최적화] 썸네일 추출 3중 필터 적용 (미디어태그 -> 컨텐츠내부 img태그)
             thumbnail = ""
             if 'media_content' in entry and len(entry.media_content) > 0: 
                 thumbnail = entry.media_content[0].get('url', '')
@@ -177,7 +191,8 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
 
     raw_news = []
     with ThreadPoolExecutor(max_workers=40) as executor:
-        for f in as_completed([executor.submit(fetch_raw_news, t) for t in active_tasks]): raw_news.extend(f.result())
+        for f in as_completed([executor.submit(fetch_raw_news, t) for t in active_tasks]):
+            raw_news.extend(f.result())
             
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:settings["max_articles"]]
     client = get_ai_client(active_key)
@@ -201,11 +216,18 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
                 item['score'] = int(parsed_data.get('score', 50))
                 item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
                 item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
-            else: raise ValueError("JSON Not Found")
+                
+                # 💡 [핵심] 소셜 리스닝을 위한 데이터 추가 추출
+                item['content_type'] = parsed_data.get('content_type', 'news')
+                item['keywords'] = parsed_data.get('keywords', [])
+            else: 
+                raise ValueError("JSON Not Found")
         except:
             item['score'] = 50 
             item['insight_title'] = safe_translate(item['title_en'])
             item['core_summary'] = safe_translate(item['summary_en'])
+            item['content_type'] = 'news'
+            item['keywords'] = []
         return item
 
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -213,7 +235,8 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             st_text.caption(f"⚡ AI 전략가가 실시간 분석 중입니다... ({i+1}/{len(raw_news)})")
             pb.progress((i + 1) / len(raw_news))
             item = future.result()
-            if item['score'] >= _weight: filtered_list.append(item)
+            # 커뮤니티 글은 필터 기준과 무관하게 일단 모두 통과시킴 (뒤에서 분리)
+            filtered_list.append(item)
                 
     st_text.empty()
     pb.empty()
@@ -231,7 +254,6 @@ st.markdown("""<style>
     .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
     .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     
-    /* 카드 내부 히어로 이미지 박스 (새로운 레이아웃용) */
     .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 10px; }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
@@ -242,6 +264,7 @@ st.markdown("""<style>
     .badge-score { background: #34495e; color: white; }
     .badge-global { background: #9b59b6; color: white; }
     .badge-china { background: #e67e22; color: white; }
+    .badge-buzz { background: #f39c12; color: white; } /* 커뮤니티 버즈용 뱃지 색상 */
     
     .hero-title { font-size: 1.15rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     .hero-source { font-size: 0.85rem; opacity: 0.9; }
@@ -314,7 +337,7 @@ with st.sidebar:
     st.session_state.settings["top_picks_count"] = tp_count
     st.session_state.settings["top_picks_global_ratio"] = tp_ratio
 
-    with st.expander("⚙️ 고급 프롬프트 설정", expanded=False):
+    with st.expander("⚙️ 고급 프롬프트 설정 (개발자용)", expanded=False):
         f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"], height=200)
         st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
 
@@ -362,10 +385,54 @@ elif os.path.exists("today_news.json"):
 if not news_list:
     st.warning("📭 보여줄 뉴스가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
 else:
+    # ==========================================
+    # 🧠 [핵심] 소셜 리스닝 & 버즈 증폭 알고리즘
+    # ==========================================
+    official_news = []
+    community_posts = []
+    
+    # 1. 뉴스 vs 커뮤니티 분리
+    for item in news_list:
+        if item.get('content_type') == 'community':
+            community_posts.append(item)
+        else:
+            # 점수 미달인 공식 뉴스 필터링
+            if item.get('score', 0) >= st.session_state.settings["filter_weight"]:
+                official_news.append(item)
+
+    # 2. 커뮤니티 키워드 빈도 추출
+    community_keywords = []
+    for cp in community_posts:
+        kws = cp.get('keywords', [])
+        if isinstance(kws, list):
+            community_keywords.extend([str(k).upper() for k in kws])
+            
+    comm_kw_counts = Counter(community_keywords)
+    hot_comm_keywords = set([k for k, v in comm_kw_counts.items() if v >= 1])
+
+    # 3. 공식 뉴스에 버즈 가산점 부여
+    for news in official_news:
+        news_kws = set([str(k).upper() for k in news.get('keywords', [])])
+        overlap = news_kws.intersection(hot_comm_keywords)
+        
+        if overlap:
+            news['score'] = min(100, news['score'] + (len(overlap) * 5))
+            news['community_buzz'] = True
+            news['buzz_words'] = list(overlap)
+        else:
+            news['community_buzz'] = False
+
+    # 4. 화면용 최종 리스트 재정렬 (커뮤니티 글은 화면에 아예 안 띄움)
+    filtered_news_list = sorted(official_news, key=lambda x: x.get('score', 0), reverse=True)
+
+    # ==========================================
+    # 💡 큐레이션 (군집화 및 분배)
+    # ==========================================
     def get_word_set(text): return set(re.findall(r'\w+', str(text).lower()))
 
-    # 💡 1번 반영: Must Know는 글로벌 뉴스만 추출하여 군집화
-    global_news_for_clustering = [item for item in news_list if item.get('category') == 'Global Innovation']
+    # 💡 Must Know는 글로벌 뉴스만 대상으로 군집화 (팀장님 요청 1번 반영)
+    global_news_for_clustering = [item for item in filtered_news_list if item.get('category') == 'Global Innovation']
+    
     clusters = []
     for item in global_news_for_clustering:
         item_words = get_word_set(item.get('title_en', ''))
@@ -393,8 +460,7 @@ else:
         must_know_items.append(best_item)
         for a in cluster: used_ids.add(a['id'])
 
-    # Top Picks 및 Stream은 전체 풀에서 중복 제외
-    remaining_news = [a for a in news_list if a['id'] not in used_ids]
+    remaining_news = [a for a in filtered_news_list if a['id'] not in used_ids]
 
     total_picks = st.session_state.settings.get("top_picks_count", 6)
     global_ratio = st.session_state.settings.get("top_picks_global_ratio", 50) / 100.0
@@ -419,14 +485,18 @@ else:
     # 🔥 Section 1: MUST KNOW
     # ==========================
     if must_know_items:
-        st.markdown("<div class='section-header'>🔥 MUST KNOW <span class='section-desc'>글로벌 핵심 이슈</span></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>🔥 MUST KNOW <span class='section-desc'>글로벌 매체 핵심 이슈</span></div>", unsafe_allow_html=True)
         cols = st.columns(3)
         for i, item in enumerate(must_know_items):
             with cols[i % 3]:
-                # 💡 [핵심] Streamlit 컨테이너를 사용하여 버튼을 완벽히 카드 안으로 편입
                 with st.container(border=True):
                     img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=800"
-                    dup_badge = f"🔥 {item['dup_count']}개 매체 중복 보도" if item.get('dup_count', 1) > 1 else "🔥 핵심 트렌드"
+                    dup_badge = f"🔥 {item['dup_count']}개 매체 중복 보도" if item.get('dup_count', 1) > 1 else "🔥 글로벌 핫트렌드"
+                    
+                    buzz_badge = ""
+                    if item.get('community_buzz'):
+                        buzz_words_str = ", ".join(item.get('buzz_words', []))
+                        buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 긱(Geek) 화제</span>"
                     
                     st.markdown(f"""
                     <div class="hero-img-box">
@@ -434,13 +504,14 @@ else:
                         <div class="hero-overlay"></div>
                         <div class="hero-content">
                             <span class="badge badge-fire">{dup_badge}</span>
+                            <span class="badge badge-score">MATCH {item['score']}%</span>
+                            {buzz_badge}
                             <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
                             <div class="hero-source">📰 {item['source']}</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # 카드 내부 우측 하단 아이콘 버튼
                     c_gap, c_btn = st.columns([5, 1])
                     if c_btn.button("🤖", key=f"btn_mk_{item['id']}", help="AI 심층 분석"):
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
@@ -455,10 +526,16 @@ else:
             with cols[i % 3]:
                 with st.container(border=True):
                     img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=800"
+                    
                     cat_badge = ""
                     if item['category'] == 'Global Innovation': cat_badge = "<span class='badge badge-global'>🌐 Global</span>"
                     elif item['category'] == 'China & East Asia': cat_badge = "<span class='badge badge-china'>🇨🇳 China</span>"
                     else: cat_badge = f"<span class='badge' style='background:#7f8c8d;'>{item['category'][:6]}</span>"
+                    
+                    buzz_badge = ""
+                    if item.get('community_buzz'):
+                        buzz_words_str = ", ".join(item.get('buzz_words', []))
+                        buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 커뮤니티 화제</span>"
                     
                     st.markdown(f"""
                     <div class="hero-img-box">
@@ -466,6 +543,8 @@ else:
                         <div class="hero-overlay"></div>
                         <div class="hero-content">
                             {cat_badge}
+                            <span class="badge badge-score">MATCH {item['score']}%</span>
+                            {buzz_badge}
                             <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
                             <div class="hero-source">📰 {item['source']}</div>
                         </div>
@@ -490,13 +569,20 @@ else:
                     title_text = item.get('insight_title', item['title_en'])
                     summary_text = item.get('core_summary', item.get('summary_ko', ''))
                     
+                    buzz_tag = ""
+                    if item.get('community_buzz'):
+                        buzz_tag = f"<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>"
+                    
                     st.markdown(f"""
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                         <div style="display:flex; align-items:center; gap:8px;">
                             <div style="width:24px; height:24px; background:#f0f2f5; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:12px;">📰</div>
                             <div style="font-weight:600; font-size:0.85rem; color:#262626;">{item['source']}</div>
                         </div>
-                        <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item['score']}%</span>
+                        <div>
+                            <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item['score']}%</span>
+                            {buzz_tag}
+                        </div>
                     </div>
                     <img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; display:block; margin-bottom:12px;" onerror="this.src='https://via.placeholder.com/600x338?text=No+Image';">
                     <div style="font-weight:700; font-size:1.05rem; line-height:1.4; color:#262626; margin-bottom:8px;">💡 {title_text}</div>
