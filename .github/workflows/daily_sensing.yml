@@ -1,42 +1,38 @@
-name: NOD Daily Sensing Batch
+name: 🌅 Daily Morning Sensing Batch
 
-# 한국시간 매일 아침 7시(UTC 22:00)에 실행되도록 예약
 on:
   schedule:
+    # 한국 시간 기준 매일 아침 7시 (UTC 시간으로는 밤 10시)에 자동 실행
     - cron: '0 22 * * *'
-  workflow_dispatch: # 수동으로 버튼 눌러서 실행할 수 있는 기능 추가
+  workflow_dispatch: # 수동으로도 버튼을 눌러 돌릴 수 있게 함
 
 jobs:
   run-batch:
     runs-on: ubuntu-latest
-
-    # 레포지토리에 파일을 덮어쓰기 위한 권한 설정
-    permissions:
-      contents: write
-
     steps:
-      - name: Checkout repository
+      - name: 저장소 체크아웃
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: 파이썬 환경 설정
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: 필수 라이브러리 설치
         run: |
-          pip install -r requirements.txt
+          pip install feedparser google-genai beautifulsoup4 deep-translator
 
-      - name: Run sensing batch script
+      - name: 모닝 센싱 스크립트 실행 (batch.py)
         env:
-          # GitHub Secrets에 등록한 API 키를 로봇에게 넘겨줍니다.
+          # Github Settings -> Secrets에 저장해둔 GEMINI_API_KEY를 불러옵니다
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python batch.py
 
-      - name: Commit and push changes
+      - name: 수집된 결과(JSON)를 Github에 덮어쓰기 저장
         run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add today_news.json
-          # 파일에 변경사항이 있으면 커밋하고 푸시합니다
-          git diff-index --quiet HEAD || (git commit -m "Auto-update: Daily NOD Sensing Results" && git push)
+          git add archive/*.json
+          git commit -m "🤖 [Automated] Update Morning Sensing Data" || echo "No changes to commit"
+          git push
