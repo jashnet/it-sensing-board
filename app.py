@@ -14,39 +14,31 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 from collections import Counter
 
-# 프롬프트 외부 연동
+# 프롬프트 연동
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
 
 # ==========================================
-# 📂 [데이터 관리] 채널 파일 입출력 로직
+# 📂 데이터 및 설정 관리
 # ==========================================
 CHANNELS_FILE = "channels.json"
 
 def load_channels_from_file():
     if os.path.exists(CHANNELS_FILE):
         try:
-            with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            return {}
+            with open(CHANNELS_FILE, "r", encoding="utf-8") as f: return json.load(f)
+        except: return {}
     return {}
 
 def save_channels_to_file(channels_data):
     try:
-        with open(CHANNELS_FILE, "w", encoding="utf-8") as f:
-            json.dump(channels_data, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        pass
+        with open(CHANNELS_FILE, "w", encoding="utf-8") as f: json.dump(channels_data, f, ensure_ascii=False, indent=4)
+    except: pass
 
 def load_user_settings(user_id):
     fn = f"nod_samsung_user_{user_id}.json"
     default_settings = {
-        "api_key": "",
-        "sensing_period": 3,
-        "max_articles": 60,
-        "filter_weight": 70,
-        "top_picks_count": 6,
-        "top_picks_global_ratio": 50,
+        "api_key": "", "sensing_period": 3, "max_articles": 60, "filter_weight": 70,
+        "top_picks_count": 6, "top_picks_global_ratio": 50,
         "filter_prompt": DEFAULT_FILTER_PROMPT,
         "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True}
@@ -63,9 +55,6 @@ def save_user_settings(user_id, settings):
     with open(f"nod_samsung_user_{user_id}.json", "w", encoding="utf-8") as f:
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
-# ==========================================
-# 🧠 [AI 엔진] & 💡 [모달 UI]
-# ==========================================
 def get_ai_client(api_key):
     if not api_key or len(api_key.strip()) < 10: return None
     try: return genai.Client(api_key=api_key.strip())
@@ -82,12 +71,11 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
     col1, col2 = st.columns([1, 2])
     with col1:
         img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
-        # 💡 HTML 들여쓰기 제거 (마크다운 버그 방지)
         html_content = f"""
 <div style="border-radius: 12px; overflow: hidden; border: 1px solid #eaeaea; background: #fdfdfd;">
     <img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; display:block; border-bottom: 1px solid #eaeaea;">
     <div style="padding: 16px;">
-        <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700; display:inline-block; margin-bottom:8px;">MATCH {item['score']}%</span>
+        <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700; display:inline-block; margin-bottom:8px;">MATCH {item.get('score', 0)}%</span>
         <div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 8px; line-height: 1.4; color: #262626;">{item.get('insight_title', item['title_en'])}</div>
         <div style="font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 12px;">{item.get('core_summary', item.get('summary_ko', ''))}</div>
         <a href="{item['link']}" target="_blank" style="display:block; font-size:0.85rem; font-weight:bold; color:#0095f6; text-decoration:none;">원문 기사 열기 ↗</a>
@@ -105,12 +93,7 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
             if client:
                 try:
                     config = types.GenerateContentConfig(system_instruction=persona)
-                    analysis_prompt = f"""
-                    {base_prompt}\n\n[기사 정보]\n제목: {item['title_en']}\n요약: {item['summary_en']}
-                    **[출력 지침 - 절대 준수]**
-                    1. 리포트가 절대 길어지면 안 됩니다. 각 항목은 '2~3줄 이내의 짧은 Bullet Point'로 극도로 간략하게 핵심만 짚어주세요.
-                    2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하고, 당장 기획에 적용해볼 만한 참신한 아이디어를 제안해 주세요.
-                    """
+                    analysis_prompt = f"{base_prompt}\n\n[기사 정보]\n제목: {item['title_en']}\n요약: {item['summary_en']}\n**[출력 지침]**\n1. 리포트가 길어지면 안 됩니다. 각 항목은 '2~3줄 이내의 짧은 Bullet Point'로 요약하세요.\n2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하여 구체적이고 참신한 아이디어를 제안해 주세요."
                     response = client.models.generate_content(model="gemini-2.5-flash", contents=analysis_prompt, config=config)
                     st.markdown(response.text)
                 except Exception as e:
@@ -144,7 +127,7 @@ def manage_channels_modal(cat):
             st.rerun()
 
 # ==========================================
-# 📡 [수집 엔진] 뉴스 크롤링
+# 📡 [수집 및 AI 필터링 엔진]
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
@@ -158,22 +141,16 @@ def fetch_raw_news(args):
             if p_date < limit: continue
             
             thumbnail = ""
-            if 'media_content' in entry and len(entry.media_content) > 0: 
-                thumbnail = entry.media_content[0].get('url', '')
-            elif 'media_thumbnail' in entry and len(entry.media_thumbnail) > 0: 
-                thumbnail = entry.media_thumbnail[0].get('url', '')
-            
+            if 'media_content' in entry and len(entry.media_content) > 0: thumbnail = entry.media_content[0].get('url', '')
+            elif 'media_thumbnail' in entry and len(entry.media_thumbnail) > 0: thumbnail = entry.media_thumbnail[0].get('url', '')
             if not thumbnail:
                 html_content = ""
-                if hasattr(entry, 'content') and isinstance(entry.content, list):
-                    html_content += entry.content[0].get('value', '')
-                if hasattr(entry, 'summary'):
-                    html_content += entry.summary
+                if hasattr(entry, 'content') and isinstance(entry.content, list): html_content += entry.content[0].get('value', '')
+                if hasattr(entry, 'summary'): html_content += entry.summary
                 if html_content:
                     soup = BeautifulSoup(html_content, "html.parser")
                     img_tag = soup.find('img')
-                    if img_tag and img_tag.get('src'):
-                        thumbnail = img_tag.get('src')
+                    if img_tag and img_tag.get('src'): thumbnail = img_tag.get('src')
 
             articles.append({
                 "id": hashlib.md5(entry.link.encode()).hexdigest()[:12], "title_en": entry.title, "link": entry.link, "source": f["name"],
@@ -195,14 +172,17 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
         for f in as_completed([executor.submit(fetch_raw_news, t) for t in active_tasks]):
             raw_news.extend(f.result())
             
-    raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:settings["max_articles"]]
+    # 💡 [핵심 최적화] 커뮤니티 글이 쿼터를 잡아먹지 않도록 수집 풀을 3배로 늘림
+    raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:settings["max_articles"] * 3]
+    
     client = get_ai_client(active_key)
-    filtered_list = []
     if not client or not _prompt: return []
 
     pb = st.progress(0)
     st_text = st.empty()
     current_ctx = get_script_run_ctx()
+    
+    processed_items = []
     
     def ai_scoring_worker(item):
         add_script_run_ctx(ctx=current_ctx)
@@ -214,30 +194,59 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             json_match = re.search(r'\{.*\}', response.text.strip(), re.DOTALL)
             if json_match:
                 parsed_data = json.loads(json_match.group())
-                item['score'] = int(parsed_data.get('score', 50))
+                item['content_type'] = parsed_data.get('content_type', 'news')
+                item['score'] = int(parsed_data.get('score', 0)) if item['content_type'] == 'news' else 0
                 item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
                 item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
-                item['content_type'] = parsed_data.get('content_type', 'news')
                 item['keywords'] = parsed_data.get('keywords', [])
-            else: 
-                raise ValueError("JSON Not Found")
+            else: raise ValueError("JSON Not Found")
         except:
+            item['content_type'] = 'news'
             item['score'] = 50 
             item['insight_title'] = safe_translate(item['title_en'])
             item['core_summary'] = safe_translate(item['summary_en'])
-            item['content_type'] = 'news'
             item['keywords'] = []
         return item
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
-            st_text.caption(f"⚡ AI 전략가가 실시간 분석 중입니다... ({i+1}/{len(raw_news)})")
+            st_text.caption(f"⚡ AI 분석 및 소셜 리스닝 중... ({i+1}/{len(raw_news)})")
             pb.progress((i + 1) / len(raw_news))
-            filtered_list.append(future.result())
-                
+            processed_items.append(future.result())
+            
     st_text.empty()
     pb.empty()
-    return sorted(filtered_list, key=lambda x: x.get('score', 0), reverse=True)
+
+    # 🧠 [소셜 리스닝 엔진] 커뮤니티 분리 및 버즈 증폭
+    news_pool = []
+    community_pool = []
+    for item in processed_items:
+        if item.get('content_type') == 'community': community_pool.append(item)
+        else: news_pool.append(item)
+
+    community_keywords = []
+    for cp in community_pool:
+        kws = cp.get('keywords', [])
+        if isinstance(kws, list): community_keywords.extend([str(k).upper() for k in kws])
+            
+    comm_kw_counts = Counter(community_keywords)
+    hot_comm_keywords = set([k for k, v in comm_kw_counts.items() if v >= 1])
+
+    for news in news_pool:
+        news_kws = set([str(k).upper() for k in news.get('keywords', [])])
+        overlap = news_kws.intersection(hot_comm_keywords)
+        if overlap:
+            news['score'] = min(100, news['score'] + (len(overlap) * 5))
+            news['community_buzz'] = True
+            news['buzz_words'] = list(overlap)
+        else:
+            news['community_buzz'] = False
+
+    # 💡 점수 컷오프 통과한 '진짜 뉴스'만 최종 리스트업 (커뮤니티 글은 여기서 소멸)
+    final_news = [n for n in news_pool if n['score'] >= _weight]
+    final_news = sorted(final_news, key=lambda x: x.get('score', 0), reverse=True)[:settings["max_articles"]]
+    
+    return final_news
 
 # ==========================================
 # 🖥️ [UI] 메인 화면 렌더링
@@ -262,6 +271,7 @@ st.markdown("""<style>
     .badge-global { background: #9b59b6; color: white; }
     .badge-china { background: #e67e22; color: white; }
     .badge-buzz { background: #f39c12; color: white; }
+    .badge-tag { background: #ecf0f1; color: #333; font-weight: 600; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; margin-right: 8px; display: inline-block; margin-bottom: 8px;}
     
     .hero-title { font-size: 1.15rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     .hero-source { font-size: 0.85rem; opacity: 0.9; }
@@ -322,7 +332,7 @@ with st.sidebar:
     st.markdown("<h3 style='font-size:1.1rem; margin-bottom:10px;'>🎛️ AI 필터 세부 설정</h3>", unsafe_allow_html=True)
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"], help="AI가 부여한 기사 관련도 점수입니다.")
     st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"], help="기준일로부터 며칠 전의 기사까지 긁어올지 결정합니다.")
-    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"], help="수집된 기사 중 AI에게 검토를 맡길 최대 개수입니다.")
+    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"], help="수집된 기사 중 화면에 표시할 최대 개수입니다.")
 
     st.markdown("<h3 style='font-size:1.1rem; margin-top:20px; margin-bottom:10px;'>📊 큐레이션 설정</h3>", unsafe_allow_html=True)
     current_tp_count = st.session_state.settings.get("top_picks_count", 6)
@@ -382,39 +392,10 @@ elif os.path.exists("today_news.json"):
 if not news_list:
     st.warning("📭 보여줄 뉴스가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
 else:
-    official_news = []
-    community_posts = []
-    for item in news_list:
-        if item.get('content_type') == 'community':
-            community_posts.append(item)
-        else:
-            if item.get('score', 0) >= st.session_state.settings["filter_weight"]:
-                official_news.append(item)
-
-    community_keywords = []
-    for cp in community_posts:
-        kws = cp.get('keywords', [])
-        if isinstance(kws, list):
-            community_keywords.extend([str(k).upper() for k in kws])
-            
-    comm_kw_counts = Counter(community_keywords)
-    hot_comm_keywords = set([k for k, v in comm_kw_counts.items() if v >= 1])
-
-    for news in official_news:
-        news_kws = set([str(k).upper() for k in news.get('keywords', [])])
-        overlap = news_kws.intersection(hot_comm_keywords)
-        if overlap:
-            news['score'] = min(100, news['score'] + (len(overlap) * 5))
-            news['community_buzz'] = True
-            news['buzz_words'] = list(overlap)
-        else:
-            news['community_buzz'] = False
-
-    filtered_news_list = sorted(official_news, key=lambda x: x.get('score', 0), reverse=True)
-
     def get_word_set(text): return set(re.findall(r'\w+', str(text).lower()))
 
-    global_news_for_clustering = [item for item in filtered_news_list if item.get('category') == 'Global Innovation']
+    # 1. Must Know 추출 (글로벌 한정)
+    global_news_for_clustering = [item for item in news_list if item.get('category') == 'Global Innovation']
     
     clusters = []
     for item in global_news_for_clustering:
@@ -443,8 +424,9 @@ else:
         must_know_items.append(best_item)
         for a in cluster: used_ids.add(a['id'])
 
-    remaining_news = [a for a in filtered_news_list if a['id'] not in used_ids]
+    remaining_news = [a for a in news_list if a['id'] not in used_ids]
 
+    # 2. Top Picks 추출 (비율 기반)
     total_picks = st.session_state.settings.get("top_picks_count", 6)
     global_ratio = st.session_state.settings.get("top_picks_global_ratio", 50) / 100.0
     global_target = int(total_picks * global_ratio)
@@ -462,6 +444,7 @@ else:
         top_picks += fillers
         for a in fillers: used_ids.add(a['id'])
 
+    # 3. Stream 추출
     stream_news = [a for a in remaining_news if a['id'] not in used_ids]
 
     # ==========================
@@ -481,7 +464,6 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 긱(Geek) 화제</span>"
                     
-                    # 💡 마크다운 들여쓰기 완벽 제거
                     html_content = f"""
 <div class="hero-img-box">
     <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW';">
@@ -521,7 +503,6 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 커뮤니티 화제</span>"
                     
-                    # 💡 마크다운 들여쓰기 완벽 제거
                     html_content = f"""
 <div class="hero-img-box">
     <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=TOP+PICK';">
@@ -541,11 +522,26 @@ else:
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream 
+    # 🌊 Section 3: Sensing Stream & 💡 주요 태그 모음
     # ==========================
     if stream_news:
         st.divider()
+        
+        # 💡 [요청사항 5번] 전체 기사에서 추출된 핫 키워드 태그 표시 로직
+        all_tags = []
+        for n in news_list:
+            if isinstance(n.get('keywords'), list):
+                all_tags.extend([str(k).upper() for k in n['keywords']])
+        
+        # 가장 많이 언급된 상위 8개 키워드 추출
+        top_tags = [tag for tag, count in Counter(all_tags).most_common(8)]
+        tag_html = " ".join([f"<span class='badge-tag'>#{t}</span>" for t in top_tags])
+        
         st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
+        # 태그들을 제목 바로 밑에 예쁘게 표시
+        if tag_html:
+            st.markdown(f"<div style='margin-bottom: 20px;'>{tag_html}</div>", unsafe_allow_html=True)
+
         stream_cols = st.columns(3)
         for i, item in enumerate(stream_news):
             with stream_cols[i % 3]:
@@ -558,7 +554,6 @@ else:
                     if item.get('community_buzz'):
                         buzz_tag = f"<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>"
                     
-                    # 💡 마크다운 들여쓰기 완벽 제거
                     html_content = f"""
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
     <div style="display:flex; align-items:center; gap:8px;">
