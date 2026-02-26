@@ -18,10 +18,21 @@ from collections import Counter
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
 
 # ==========================================
-# 📂 [데이터 관리] 채널 파일 및 캐시 파일 입출력
+# 🎨 [애니메이션] 스피너 SVG UI 컴포넌트
+# ==========================================
+SPINNER_SVG = """
+<svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle; margin-right: 10px; margin-bottom: 4px; animation: spin 1s linear infinite;">
+    <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" fill="#E2E8F0"/>
+    <path d="M12 2a10 10 0 0 1 10 10h-2A8 8 0 0 0 12 4z" fill="#0072FF"/>
+</svg>
+"""
+
+# ==========================================
+# 📂 [데이터 관리] 채널 파일 입출력
 # ==========================================
 CHANNELS_FILE = "channels.json"
-MANUAL_CACHE_FILE = "manual_cache.json" # 💡 신규: 수동 센싱 결과를 저장할 파일
+MANUAL_CACHE_FILE = "manual_cache.json"
 
 def load_channels_from_file():
     if os.path.exists(CHANNELS_FILE):
@@ -164,20 +175,27 @@ def fetch_raw_news(args):
     return articles
 
 def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=None):
-    # 💡 [핵심 최적화] AI 채점만 하고 필터링은 하지 않은 채 "원본"을 반환합니다.
     active_key = settings.get("api_key", "").strip()
     if not active_key: return []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     active_tasks = [(cat, f, limit) for cat, feeds in channels_data.items() if settings["category_active"].get(cat, True) for f in feeds if f.get("active", True)]
     if not active_tasks: return []
 
-    if st_text_ui:
-        st_text_ui.markdown("<div style='text-align:center; padding:10px;'><h3 style='color:#0072FF;'>📡 전 세계 RSS 채널에서 최신 뉴스를 수집하고 있습니다... (약 5~10초 소요)</h3></div>", unsafe_allow_html=True)
-
     raw_news = []
+    total_feeds = len(active_tasks)
+    
+    # 💡 1단계: 수집 단계 실시간 애니메이션 진행률 표시
+    if st_text_ui and pb_ui:
+        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 전 세계 매체에서 최신 뉴스를 수집 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_feeds} 채널 확인 완료)</p></div>", unsafe_allow_html=True)
+        pb_ui.progress(0)
+
     with ThreadPoolExecutor(max_workers=40) as executor:
-        for f in as_completed([executor.submit(fetch_raw_news, t) for t in active_tasks]):
+        futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
+        for i, f in enumerate(as_completed(futures)):
             raw_news.extend(f.result())
+            if st_text_ui and pb_ui:
+                st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 전 세계 매체에서 최신 뉴스를 수집 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>({i+1} / {total_feeds} 채널 확인 완료)</p></div>", unsafe_allow_html=True)
+                pb_ui.progress((i + 1) / total_feeds)
             
     fetch_limit = int(settings["max_articles"] * 1.3)
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:fetch_limit]
@@ -191,8 +209,10 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
             st_text_ui.markdown("<div style='text-align:center; padding:10px;'><h3 style='color:#E74C3C;'>⚠️ 설정된 기간 내에 수집된 기사가 없습니다.</h3></div>", unsafe_allow_html=True)
         return []
 
-    if st_text_ui:
-        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#00C6FF;'>🧠 총 {total_items}개 기사 확보! AI 수석 전략가가 분석을 시작합니다...</h3><p style='font-size:1.1rem; color:#555;'>(0 / {total_items} 완료)</p></div>", unsafe_allow_html=True)
+    # 💡 2단계: AI 분석 단계 준비
+    if st_text_ui and pb_ui:
+        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사 확보! AI 심층 분석을 시작합니다...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
+        pb_ui.progress(0)
 
     current_ctx = get_script_run_ctx()
     processed_items = []
@@ -203,14 +223,12 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
             import random
             time.sleep(random.uniform(0.1, 0.8))
             
-            # 방어막: Reddit, V2EX 등은 AI 착각 방지를 위해 명시
             score_query = f"{_prompt}\n\n[평가 대상]\n매체(출처): {item['source']}\n링크: {item['link']}\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
             response = client.models.generate_content(model="gemini-2.5-flash", contents=score_query)
             
             json_match = re.search(r'\{.*\}', response.text.strip(), re.DOTALL)
             if json_match:
                 parsed_data = json.loads(json_match.group())
-                
                 url_lower = item['link'].lower()
                 source_lower = item['source'].lower()
                 community_domains = ['reddit', 'v2ex', 'hacker news', 'ycombinator', 'clien', 'dcinside', 'blind']
@@ -235,8 +253,9 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
+            # 💡 3단계: AI 분석 실시간 애니메이션 진행률 표시
             if st_text_ui and pb_ui:
-                html_msg = f"<div style='text-align:center; padding:10px;'><h3 style='color:#00C6FF;'>📡 AI가 기사 내용과 커뮤니티 버즈를 심층 분석하고 있습니다...</h3><p style='font-size:1.1rem; color:#555;'>({i+1} / {total_items} 완료)</p></div>"
+                html_msg = f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} AI가 기사 내용과 커뮤니티 버즈를 분석 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>({i+1} / {total_items} 분석 완료)</p></div>"
                 st_text_ui.markdown(html_msg, unsafe_allow_html=True)
                 pb_ui.progress((i + 1) / total_items)
             processed_items.append(future.result())
@@ -265,7 +284,6 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         else:
             news['community_buzz'] = False
 
-    # 💡 필터링하지 않고, 점수가 매겨진 전체 뉴스 풀을 저장용으로 반환합니다.
     news_pool = sorted(news_pool, key=lambda x: x.get('score', 0), reverse=True)
     return news_pool
 
@@ -328,7 +346,7 @@ st.markdown("""<style>
     .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
     .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     
-    .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 10px; }
+    .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 5px; }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
     .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 15px; z-index: 3; color: white; }
@@ -409,7 +427,6 @@ with st.sidebar:
                 manage_channels_modal(cat)
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
-    # 💡 UI 실시간 연동을 위해 session_state 값 직접 바인딩
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 70))
     st.session_state.settings["filter_weight"] = f_weight
     
@@ -452,16 +469,15 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 💡 [핵심 최적화] 실시간 센싱 버튼 클릭 시 동작
 if st.session_state.get("run_sensing", False):
     st.markdown("<br><br>", unsafe_allow_html=True)
     st_text_ui = st.empty()
     pb_ui = st.progress(0)
     
-    st_text_ui.markdown("<div style='text-align:center; padding:10px;'><h3 style='color:#0072FF;'>🚀 실시간 데이터 파이프라인 가동 준비 중...</h3></div>", unsafe_allow_html=True)
+    # 애니메이션이 포함된 대기 메시지
+    st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 실시간 데이터 파이프라인 가동 준비 중...</h3></div>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    # 여기서 필터링 없이 전체 풀을 로드하여 캐시 파일로 저장합니다.
     all_scored_news = get_filtered_news(
         st.session_state.settings, 
         st.session_state.channels, 
@@ -470,7 +486,6 @@ if st.session_state.get("run_sensing", False):
         st_text_ui
     )
     
-    # 로컬 캐시에 저장
     try:
         with open(MANUAL_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(all_scored_news, f, ensure_ascii=False, indent=4)
@@ -491,7 +506,6 @@ with c2:
     else:
         st.markdown("<div style='text-align:right; color:#3498db; font-weight:bold; font-size:0.9rem;'>🕒 Batch Mode (일일 자동 브리핑)</div>", unsafe_allow_html=True)
 
-# 💡 [핵심] 모드에 따라 읽어올 파일을 결정 (캐싱 로드)
 raw_news_pool = []
 target_file = MANUAL_CACHE_FILE if st.session_state.get("is_live_mode", False) else "today_news.json"
 
@@ -501,7 +515,6 @@ if os.path.exists(target_file):
             raw_news_pool = json.load(f)
     except: pass
 
-# 💡 [프론트엔드 실시간 필터링] 로드한 전체 데이터에서 UI 슬라이더 값에 따라 즉시 필터링
 f_weight = st.session_state.settings.get("filter_weight", 70)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
 
@@ -526,7 +539,6 @@ elif not news_list:
     col4.metric("🗑️ 0~49점", f"{score_ranges['0-49']}개")
 
 else:
-    # 이하 기존 화면 렌더링 로직 (실시간 반영됨)
     news_list = news_list[:st.session_state.settings.get("max_articles", 60)]
     
     def get_word_set(text): return set(re.findall(r'\w+', str(text).lower()))
@@ -676,7 +688,7 @@ else:
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream 
+    # 🌊 Section 3: Sensing Stream
     # ==========================
     if stream_news:
         st.divider()
