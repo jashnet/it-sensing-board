@@ -262,9 +262,9 @@ st.markdown("""<style>
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
-    /* 💡 [액션바] 둥근 테두리 사각형의 AI 분석 버튼 (Secondary) */
+    /* 💡 [액션바] 둥근 테두리 사각형(알약 모양) 버튼 공통 속성 (Secondary) */
     div[data-testid="stButton"] button[kind="secondary"] { 
-        border-radius: 16px !important; /* 모던한 알약(Pill) 모양 */
+        border-radius: 16px !important; 
         min-height: 34px !important;
         height: 34px !important;
         padding: 0 14px !important;
@@ -276,6 +276,7 @@ st.markdown("""<style>
         display: flex;
         align-items: center;
         justify-content: center;
+        font-size: 0.85rem !important;
     }
     div[data-testid="stButton"] button[kind="secondary"]:hover { 
         background-color: #F1F5F9 !important; 
@@ -283,25 +284,6 @@ st.markdown("""<style>
         border-color: #94A3B8 !important; 
     }
     
-    /* 💡 [액션바] 테두리 없는 심플한 Share 버튼 (Tertiary) */
-    div[data-testid="stButton"] button[kind="tertiary"] {
-        padding: 0 !important;
-        min-height: 34px !important;
-        height: 34px !important;
-        font-size: 1.2rem !important;
-        color: #64748B !important;
-        background: transparent !important;
-        border: none !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    div[data-testid="stButton"] button[kind="tertiary"]:hover {
-        color: #0F172A !important;
-        background-color: #F1F5F9 !important;
-        border-radius: 8px !important;
-    }
-
     .stTextInput>div>div>input { border-radius: 10px; }
     
     .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 2rem 2.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
@@ -559,7 +541,6 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 긱(Geek) 화제</span>"
                     
-                    # 💡 이미지 오버레이 영역 (출처 삭제, 뱃지와 제목만)
                     html_content = (
                         '<div class="hero-img-box">'
                         f'<img src="{img_src}" class="hero-bg" onerror="this.src=\'https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW\';">'
@@ -573,20 +554,21 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [핵심] 하단 액션바 영역 (수직 정렬 Flexbox 적용)
-                    act_c1, act_c2, act_c3 = st.columns([5.5, 1.5, 3])
+                    # 💡 [핵심] 액션바 5:2.5:2.5 비율 배분으로 통일된 알약 버튼 나란히 배치
+                    act_c1, act_c2, act_c3 = st.columns([5, 2.5, 2.5])
                     with act_c1:
                         st.markdown(f"""
                         <div style='height: 34px; display: flex; align-items: center; font-size: 0.95rem; margin-top: 2px;'>
-                            <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "")}</a>
+                            <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
                             <span style='font-size: 0.8rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤", key=f"share_mk_{item['id']}_{i}", type="tertiary", help="공유하기"):
+                        # Share 버튼도 secondary(알약) 스타일 적용
+                        if st.button("📤 공유", key=f"share_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("🤖 AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -623,20 +605,19 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [핵심] 하단 액션바 영역
-                    act_c1, act_c2, act_c3 = st.columns([5.5, 1.5, 3])
+                    act_c1, act_c2, act_c3 = st.columns([5, 2.5, 2.5])
                     with act_c1:
                         st.markdown(f"""
                         <div style='height: 34px; display: flex; align-items: center; font-size: 0.95rem; margin-top: 2px;'>
-                            <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "")}</a>
+                            <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
                             <span style='font-size: 0.8rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤", key=f"share_tp_{item['id']}_{i}", type="tertiary", help="공유하기"):
+                        if st.button("📤 공유", key=f"share_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("🤖 AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -670,12 +651,11 @@ else:
                     if item.get('community_buzz'):
                         buzz_tag = "<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>"
                     
-                    # 💡 [핵심] 출처 부분에 링크 <a> 태그 적용 및 폰트 확대 (0.95rem)
                     html_content = (
                         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
                         '<div style="display:flex; align-items:center; gap:8px;">'
                         '<div style="width:24px; height:24px; background:#f0f2f5; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:12px;">📰</div>'
-                        f'<a href="{item.get("link", "#")}" target="_blank" style="font-weight:800; font-size:0.95rem; color:#1E293B; text-decoration:none;">{item.get("source", "")}</a>'
+                        f'<a href="{item.get("link", "#")}" target="_blank" style="font-weight:800; font-size:0.95rem; color:#1E293B; text-decoration:none;">{item.get("source", "Source")}</a>'
                         '</div><div>'
                         f'<span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item.get("score", 0)}%</span> '
                         f'{buzz_tag}'
@@ -686,13 +666,12 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 하단 액션바 적용
-                    act_c1, act_c2, act_c3 = st.columns([5.5, 1.5, 3])
+                    act_c1, act_c2, act_c3 = st.columns([5, 2.5, 2.5])
                     with act_c1:
                         st.markdown(f"<div style='height: 34px; display: flex; align-items: center; font-size: 0.8rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤", key=f"share_st_{item['id']}_{i}", type="tertiary", help="공유하기"):
+                        if st.button("📤 공유", key=f"share_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("🤖 AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
