@@ -551,7 +551,7 @@ else:
 """
                     st.markdown(html_content, unsafe_allow_html=True)
                     c_gap, c_btn = st.columns([5, 1])
-                    if c_btn.button("🤖", key=f"btn_mk_{item['id']}", help="AI 심층 분석"):
+                    if c_btn.button("🤖", key=f"btn_mk_{item['id']}_{i}", help="AI 심층 분석"):
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -591,7 +591,7 @@ else:
 """
                     st.markdown(html_content, unsafe_allow_html=True)
                     c_gap, c_btn = st.columns([5, 1])
-                    if c_btn.button("🤖", key=f"btn_tp_{item['id']}", help="AI 심층 분석"):
+                    if c_btn.button("🤖", key=f"btn_tp_{item['id']}_{i}", help="AI 심층 분석"):
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -644,5 +644,5 @@ else:
 """
                     st.markdown(html_content, unsafe_allow_html=True)
                     c_empty, c_btn = st.columns([2, 1])
-                    if c_btn.button("🤖 분석", key=f"btn_st_{item['id']}", use_container_width=True):
+                    if c_btn.button("🤖 분석", key=f"btn_st_{item['id']}_{i}", use_container_width=True):
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
