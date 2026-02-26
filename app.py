@@ -397,7 +397,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 💡 [핵심] 메인 카드 안의 액션 버튼 타겟팅 - 글자 크기 20% 축소 (0.48rem) & 버튼 크기 미세 조정 */
+    /* 💡 [핵심 1] 메인 카드 안의 액션 버튼 타겟팅 - 글자 크기를 살짝 키우고 가로 여백을 조절 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -408,7 +408,7 @@ st.markdown("""<style>
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.48rem !important; /* 💡 0.6rem -> 0.48rem (20% 축소) */
+        font-size: 0.65rem !important; 
         display: flex;
         align-items: center;
         justify-content: center;
@@ -428,7 +428,7 @@ st.markdown("""<style>
         font-weight: 700 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.48rem !important; /* 💡 0.6rem -> 0.48rem (20% 축소) */
+        font-size: 0.65rem !important; 
         display: flex;
         align-items: center;
         justify-content: center;
@@ -438,7 +438,7 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [신규] Dribbble 스타일 필터 칩 (Streamlit Radio Button 해킹) */
+    /* 💡 [핵심 2] Dribbble 스타일 칩(Pill) 라디오 버튼 필터 */
     [data-testid="stRadio"] { margin-bottom: 20px; }
     [data-testid="stRadio"] div[role="radiogroup"] { gap: 10px; flex-wrap: wrap; }
     [data-testid="stRadio"] div[role="radiogroup"] label {
@@ -562,11 +562,16 @@ with st.sidebar:
                 manage_channels_modal(cat)
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
+    
+    # 💡 값 변동 시 Auto-Save를 위한 변수 할당
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 50))
     st.session_state.settings["filter_weight"] = f_weight
     
-    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings.get("sensing_period", 14))
-    st.session_state.settings["max_articles"] = st.slider("최대 화면 표시 기사 수", 30, 100, st.session_state.settings.get("max_articles", 50))
+    s_period = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings.get("sensing_period", 14))
+    st.session_state.settings["sensing_period"] = s_period
+    
+    m_articles = st.slider("최대 화면 표시 기사 수", 30, 100, st.session_state.settings.get("max_articles", 50))
+    st.session_state.settings["max_articles"] = m_articles
 
     st.markdown("<div class='sidebar-label'>Curation Settings</div>", unsafe_allow_html=True)
     current_tp_count = st.session_state.settings.get("top_picks_count", 6)
@@ -574,19 +579,24 @@ with st.sidebar:
     
     tp_count_options = [3, 6, 9, 12]
     tp_count = st.selectbox("🏆 Today's Picks 노출 개수", options=tp_count_options, index=tp_count_options.index(current_tp_count) if current_tp_count in tp_count_options else 1)
-    tp_ratio = st.slider("🌐 글로벌 뉴스 비율 (%)", min_value=0, max_value=100, value=current_tp_ratio, step=10)
     st.session_state.settings["top_picks_count"] = tp_count
+    
+    tp_ratio = st.slider("🌐 글로벌 뉴스 비율 (%)", min_value=0, max_value=100, value=current_tp_ratio, step=10)
     st.session_state.settings["top_picks_global_ratio"] = tp_ratio
 
     with st.expander("⚙️ 고급 프롬프트 설정", expanded=False):
         f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"], height=200)
-        st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
+        st.session_state.settings["filter_prompt"] = f_prompt
+        
+        a_prompt = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
+        st.session_state.settings["ai_prompt"] = a_prompt
+
+    # 💡 [핵심 1] 사이드바 설정값이 바뀔 때마다 자동으로 JSON 파일에 저장되도록 함
+    save_user_settings(st.session_state.current_user, st.session_state.settings)
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
-        st.session_state.settings["filter_prompt"] = f_prompt
-        save_user_settings(st.session_state.current_user, st.session_state.settings)
         st.session_state.run_sensing = True
         st.rerun()
             
@@ -767,7 +777,8 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
+                    # 💡 [핵심 2] 공간 배분 조정을 통한 가로 폭 약 30% 확장 (비율 변경)
+                    act_c1, act_c2, act_c3 = st.columns([5.4, 2.3, 2.3])
                     with act_c1:
                         st.markdown(f"""
                         <div style='height: 24px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
@@ -808,7 +819,7 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
+                    act_c1, act_c2, act_c3 = st.columns([5.4, 2.3, 2.3])
                     with act_c1:
                         st.markdown(f"""
                         <div style='height: 24px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
@@ -830,7 +841,6 @@ else:
         st.divider()
         st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
         
-        # 💡 [신규] Dribbble 스타일 칩(Pill) 라디오 버튼 필터 
         filter_options = ["✨ 전체보기", "🌐 글로벌 혁신", "🇨🇳 중국 동향", "🤖 일본/로보틱스", "💬 커뮤니티 화제"]
         selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed")
         
@@ -872,7 +882,7 @@ else:
                         )
                         st.markdown(html_content, unsafe_allow_html=True)
                         
-                        act_c1, act_c2, act_c3 = st.columns([6.4, 1.8, 1.8])
+                        act_c1, act_c2, act_c3 = st.columns([5.4, 2.3, 2.3])
                         with act_c1:
                             st.markdown(f"<div style='height: 24px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                         with act_c2:
