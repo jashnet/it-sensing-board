@@ -383,11 +383,9 @@ st.markdown("""<style>
     [data-testid="stSidebar"] { background-color: #F8FAFC !important; border-right: 1px solid #E2E8F0; }
     .sidebar-label { color: #64748B; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1.5rem; margin-bottom: 0.75rem; padding-left: 5px; }
     
-    /* 사이드바 기본 Primary 버튼 */
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
-    /* 사이드바 기본 Secondary/Tertiary 버튼 (원래 크기 유지) */
     div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="secondary"],
     div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="tertiary"] {
         border-radius: 12px !important; 
@@ -397,18 +395,20 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 💡 [핵심 1] 메인 카드 안의 액션 버튼 타겟팅 - 글자 크기를 살짝 키우고 가로 여백을 조절 */
+    /* 💡 [수정] Dribbble 스타일: 완전한 알약(12px) 형태, 초소형 타이포그래피(9px), 글자 두께와 자간 강조 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
-        border-radius: 6px !important; 
+        border-radius: 12px !important; 
         min-height: 24px !important;  
         height: 24px !important;
         padding: 0 10px !important;   
         border: none !important; 
         color: #0284C7 !important; 
-        font-weight: 700 !important; 
+        font-weight: 800 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.65rem !important; 
+        font-size: 9px !important; 
+        letter-spacing: 0.5px !important;
+        line-height: 1 !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -419,16 +419,18 @@ st.markdown("""<style>
     }
     
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"] {
-        border-radius: 6px !important; 
+        border-radius: 12px !important; 
         min-height: 24px !important;  
         height: 24px !important;
         padding: 0 10px !important;   
         border: none !important; 
         color: #475569 !important; 
-        font-weight: 700 !important; 
+        font-weight: 800 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.65rem !important; 
+        font-size: 9px !important; 
+        letter-spacing: 0.5px !important;
+        line-height: 1 !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -438,7 +440,6 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [핵심 2] Dribbble 스타일 칩(Pill) 라디오 버튼 필터 */
     [data-testid="stRadio"] { margin-bottom: 20px; }
     [data-testid="stRadio"] div[role="radiogroup"] { gap: 10px; flex-wrap: wrap; }
     [data-testid="stRadio"] div[role="radiogroup"] label {
@@ -455,7 +456,7 @@ st.markdown("""<style>
         border-color: #CBD5E1 !important;
     }
     [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"] div:first-child {
-        display: none !important; /* 기본 동그라미 숨김 */
+        display: none !important; 
     }
     [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
     [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
@@ -562,8 +563,6 @@ with st.sidebar:
                 manage_channels_modal(cat)
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
-    
-    # 💡 값 변동 시 Auto-Save를 위한 변수 할당
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 50))
     st.session_state.settings["filter_weight"] = f_weight
     
@@ -591,7 +590,6 @@ with st.sidebar:
         a_prompt = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
         st.session_state.settings["ai_prompt"] = a_prompt
 
-    # 💡 [핵심 1] 사이드바 설정값이 바뀔 때마다 자동으로 JSON 파일에 저장되도록 함
     save_user_settings(st.session_state.current_user, st.session_state.settings)
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
@@ -777,7 +775,7 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [핵심 2] 공간 배분 조정을 통한 가로 폭 약 30% 확장 (비율 변경)
+                    # 💡 [핵심] 버튼을 위해 가로 비율 30% 넓게 재조정 (5.4 : 2.3 : 2.3)
                     act_c1, act_c2, act_c3 = st.columns([5.4, 2.3, 2.3])
                     with act_c1:
                         st.markdown(f"""
@@ -835,7 +833,7 @@ else:
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream (with Dribbble Filter)
+    # 🌊 Section 3: Sensing Stream
     # ==========================
     if stream_news:
         st.divider()
