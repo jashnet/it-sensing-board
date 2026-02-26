@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import feedparser
 from google import genai
 from google.genai import types
@@ -16,6 +17,25 @@ from collections import Counter
 
 # 프롬프트 외부 연동
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
+
+# ==========================================
+# 📋 [유틸] 클립보드 복사 함수 (JS Injection)
+# ==========================================
+def copy_to_clipboard(title, summary, link):
+    copy_text = f"[NGEPT Insight]\n제목: {title}\n요약: {summary}\n원문: {link}"
+    copy_text = copy_text.replace('`', '\\`').replace('$', '\\$')
+    js_code = f"""
+    <script>
+    const textArea = document.createElement("textarea");
+    textArea.value = `{copy_text}`;
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {{ document.execCommand('copy'); }} 
+    catch (err) {{ console.error('Copy failed', err); }}
+    document.body.removeChild(textArea);
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
 
 # ==========================================
 # 🎨 [애니메이션] 스피너 SVG UI 컴포넌트
@@ -48,9 +68,10 @@ def save_channels_to_file(channels_data):
 
 def load_user_settings(user_id):
     fn = f"nod_samsung_user_{user_id}.json"
+    # 💡 [요청사항 반영] 기본 설정값 변경: 기간 14일, 기사 50, 점수 50, 글로벌 70, Picks 6
     default_settings = {
-        "api_key": "", "sensing_period": 3, "max_articles": 60, "filter_weight": 70,
-        "top_picks_count": 6, "top_picks_global_ratio": 50,
+        "api_key": "", "sensing_period": 14, "max_articles": 50, "filter_weight": 50,
+        "top_picks_count": 6, "top_picks_global_ratio": 70,
         "filter_prompt": DEFAULT_FILTER_PROMPT,
         "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True}
@@ -371,44 +392,43 @@ st.markdown("""<style>
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
-    /* 💡 [수정됨] AI 분석 버튼: 크기 20% 축소 (28px -> 22px), 글자 크기 축소 (0.75rem -> 0.65rem) */
-    div[data-testid="stButton"] button[kind="secondary"] { 
+    /* 💡 [핵심] 사이드바와 모달의 버튼들은 건드리지 않고, 메인 화면(기사 카드)의 액션 버튼만 초소형으로 스타일링! */
+    [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
-        min-height: 22px !important;
-        height: 22px !important;
-        padding: 0 8px !important;
+        min-height: 20px !important;
+        height: 20px !important;
+        padding: 0 6px !important;
         border: none !important; 
         color: #0284C7 !important; 
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.65rem !important;
+        font-size: 0.6rem !important;
         display: flex;
         align-items: center;
         justify-content: center;
     }
-    div[data-testid="stButton"] button[kind="secondary"]:hover { 
+    [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"]:hover { 
         background-color: #BAE6FD !important; 
         color: #0369A1 !important; 
     }
     
-    /* 💡 [수정됨] 공유 버튼: 크기 20% 축소 (28px -> 22px), 글자 크기 축소 (0.75rem -> 0.65rem) */
-    div[data-testid="stButton"] button[kind="tertiary"] {
+    [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"] {
         border-radius: 6px !important; 
-        min-height: 22px !important;
-        height: 22px !important;
-        padding: 0 8px !important;
+        min-height: 20px !important;
+        height: 20px !important;
+        padding: 0 6px !important;
         border: none !important; 
         color: #475569 !important; 
         font-weight: 600 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.65rem !important;
+        font-size: 0.6rem !important;
         display: flex;
         align-items: center;
         justify-content: center;
     }
-    div[data-testid="stButton"] button[kind="tertiary"]:hover {
+    [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"]:hover {
         background-color: #E2E8F0 !important; 
         color: #0F172A !important; 
     }
@@ -500,15 +520,15 @@ with st.sidebar:
                 manage_channels_modal(cat)
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
-    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 70))
+    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 50))
     st.session_state.settings["filter_weight"] = f_weight
     
-    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings.get("sensing_period", 3))
-    st.session_state.settings["max_articles"] = st.slider("최대 화면 표시 기사 수", 30, 100, st.session_state.settings.get("max_articles", 60))
+    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings.get("sensing_period", 14))
+    st.session_state.settings["max_articles"] = st.slider("최대 화면 표시 기사 수", 30, 100, st.session_state.settings.get("max_articles", 50))
 
     st.markdown("<div class='sidebar-label'>Curation Settings</div>", unsafe_allow_html=True)
     current_tp_count = st.session_state.settings.get("top_picks_count", 6)
-    current_tp_ratio = st.session_state.settings.get("top_picks_global_ratio", 50)
+    current_tp_ratio = st.session_state.settings.get("top_picks_global_ratio", 70)
     
     tp_count_options = [3, 6, 9, 12]
     tp_count = st.selectbox("🏆 Today's Picks 노출 개수", options=tp_count_options, index=tp_count_options.index(current_tp_count) if current_tp_count in tp_count_options else 1)
@@ -522,9 +542,7 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     
-    if st.button("ℹ️ 시스템 작동 원리 (Help)", use_container_width=True, type="secondary"):
-        show_help_modal()
-        
+    # 💡 [요청사항 반영] 버튼 순서 변경: 수동센싱 -> 모닝센싱 복귀 -> Help
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
         save_user_settings(st.session_state.current_user, st.session_state.settings)
@@ -537,6 +555,9 @@ with st.sidebar:
             try: os.remove(MANUAL_CACHE_FILE)
             except: pass
         st.rerun()
+        
+    if st.button("ℹ️ 시스템 작동 원리 (Help)", use_container_width=True, type="secondary"):
+        show_help_modal()
 
 # ==========================================
 # 4. 메인 컨텐츠 영역
@@ -607,14 +628,14 @@ if os.path.exists(target_file):
         with open(target_file, "r", encoding="utf-8") as f: raw_news_pool = json.load(f)
     except: pass
 
-f_weight = st.session_state.settings.get("filter_weight", 70)
+f_weight = st.session_state.settings.get("filter_weight", 50)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
 
 if not raw_news_pool:
     st.warning("📭 수집된 데이터가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
 elif not news_list:
     st.warning(f"📭 수집은 완료되었으나, 최소 점수({f_weight}점)를 넘는 기사가 없습니다.")
-    st.info(f"💡 전체 수집된 **총 {len(raw_news_pool)}개 기사**의 점수 분포를 확인하고 좌측 슬라이더를 조절해 보세요. (AI 재호출 없이 1초만에 화면이 바뀝니다!)")
+    st.info(f"💡 전체 수집된 **총 {len(raw_news_pool)}개 기사**의 점수 분포를 확인하고 좌측 슬라이더를 조절해 보세요.")
     
     score_ranges = {"90-100": 0, "70-89": 0, "50-69": 0, "0-49": 0}
     for n in raw_news_pool:
@@ -631,7 +652,7 @@ elif not news_list:
     col4.metric("🗑️ 0~49점", f"{score_ranges['0-49']}개")
 
 else:
-    news_list = news_list[:st.session_state.settings.get("max_articles", 60)]
+    news_list = news_list[:st.session_state.settings.get("max_articles", 50)]
     def get_word_set(text): return set(re.findall(r'\w+', str(text).lower()))
     global_news_for_clustering = [item for item in news_list if item.get('category') == 'Global Innovation']
     
@@ -661,7 +682,7 @@ else:
 
     remaining_news = [a for a in news_list if a['id'] not in used_ids]
     total_picks = st.session_state.settings.get("top_picks_count", 6)
-    global_ratio = st.session_state.settings.get("top_picks_global_ratio", 50) / 100.0
+    global_ratio = st.session_state.settings.get("top_picks_global_ratio", 70) / 100.0
     global_target = int(total_picks * global_ratio)
     china_target = total_picks - global_target
 
@@ -705,18 +726,20 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [UI 튜닝] 액션바 영역 (버튼 비율 최적화)
-                    act_c1, act_c2, act_c3 = st.columns([6, 1.8, 2.2])
+                    # 💡 [요청사항 반영] 버튼 비율을 더 여유있게 (제목칸 확보)
+                    act_c1, act_c2, act_c3 = st.columns([6.8, 1.6, 1.6])
                     with act_c1:
                         st.markdown(f"""
-                        <div style='height: 22px; display: flex; align-items: center; font-size: 0.9rem; margin-top: 2px;'>
+                        <div style='height: 20px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
                             <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
-                            <span style='font-size: 0.75rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
+                            <span style='font-size: 0.7rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
+                        # 💡 [요청사항 반영] 클립보드 복사 실행
                         if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            st.toast("기사 링크가 복사되었습니다!")
+                            copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
+                            st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
                     with act_c3:
                         if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
@@ -747,18 +770,18 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [UI 튜닝] 액션바 영역 (버튼 비율 최적화)
-                    act_c1, act_c2, act_c3 = st.columns([6, 1.8, 2.2])
+                    act_c1, act_c2, act_c3 = st.columns([6.8, 1.6, 1.6])
                     with act_c1:
                         st.markdown(f"""
-                        <div style='height: 22px; display: flex; align-items: center; font-size: 0.9rem; margin-top: 2px;'>
+                        <div style='height: 20px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
                             <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
-                            <span style='font-size: 0.75rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
+                            <span style='font-size: 0.7rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
                         if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            st.toast("기사 링크가 복사되었습니다!")
+                            copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
+                            st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
                     with act_c3:
                         if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
@@ -799,13 +822,13 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [UI 튜닝] 액션바 영역 (버튼 비율 최적화)
-                    act_c1, act_c2, act_c3 = st.columns([6, 1.8, 2.2])
+                    act_c1, act_c2, act_c3 = st.columns([6.8, 1.6, 1.6])
                     with act_c1:
-                        st.markdown(f"<div style='height: 22px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='height: 20px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
                         if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            st.toast("기사 링크가 복사되었습니다!")
+                            copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
+                            st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
                     with act_c3:
                         if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
