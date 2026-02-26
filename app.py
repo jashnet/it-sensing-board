@@ -261,22 +261,45 @@ st.markdown("""<style>
     
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
-    div[data-testid="stButton"] button[kind="secondary"] { border-radius: 12px; background-color: transparent; border: 1px solid #CBD5E1; color: #475569; font-weight: 600; transition: all 0.2s ease; }
-    div[data-testid="stButton"] button[kind="secondary"]:hover { background-color: #F1F5F9; color: #0F172A; border-color: #94A3B8; }
     
-    /* 💡 [핵심] 텍스트형(Tertiary) 버튼 디자인 오버라이딩 */
+    /* 💡 [액션바] 둥근 테두리 사각형의 AI 분석 버튼 (Secondary) */
+    div[data-testid="stButton"] button[kind="secondary"] { 
+        border-radius: 16px !important; /* 모던한 알약(Pill) 모양 */
+        min-height: 34px !important;
+        height: 34px !important;
+        padding: 0 14px !important;
+        border: 1px solid #CBD5E1 !important; 
+        color: #334155 !important; 
+        font-weight: 700 !important; 
+        background-color: #FFFFFF !important;
+        transition: all 0.2s ease; 
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover { 
+        background-color: #F1F5F9 !important; 
+        color: #0F172A !important; 
+        border-color: #94A3B8 !important; 
+    }
+    
+    /* 💡 [액션바] 테두리 없는 심플한 Share 버튼 (Tertiary) */
     div[data-testid="stButton"] button[kind="tertiary"] {
-        padding: 0px 4px !important;
-        min-height: 0px !important;
-        height: auto !important;
-        font-size: 0.85rem !important;
+        padding: 0 !important;
+        min-height: 34px !important;
+        height: 34px !important;
+        font-size: 1.2rem !important;
         color: #64748B !important;
-        font-weight: 600;
+        background: transparent !important;
+        border: none !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     div[data-testid="stButton"] button[kind="tertiary"]:hover {
         color: #0F172A !important;
-        background-color: transparent !important;
-        text-decoration: underline;
+        background-color: #F1F5F9 !important;
+        border-radius: 8px !important;
     }
 
     .stTextInput>div>div>input { border-radius: 10px; }
@@ -285,7 +308,7 @@ st.markdown("""<style>
     .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
     .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     
-    .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 5px; }
+    .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 10px; }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
     .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 15px; z-index: 3; color: white; }
@@ -536,7 +559,7 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 긱(Geek) 화제</span>"
                     
-                    # 오버레이에서 출처 제거, 제목만 띄움
+                    # 💡 이미지 오버레이 영역 (출처 삭제, 뱃지와 제목만)
                     html_content = (
                         '<div class="hero-img-box">'
                         f'<img src="{img_src}" class="hero-bg" onerror="this.src=\'https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW\';">'
@@ -550,15 +573,20 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [핵심] 하단 액션바 (출처 + 텍스트 버튼)
-                    act_c1, act_c2, act_c3 = st.columns([4.5, 2, 2.5])
+                    # 💡 [핵심] 하단 액션바 영역 (수직 정렬 Flexbox 적용)
+                    act_c1, act_c2, act_c3 = st.columns([5.5, 1.5, 3])
                     with act_c1:
-                        st.markdown(f"<div style='padding-top:6px; font-size:0.75rem; color:#64748B;'><a href='{item.get('link', '#')}' target='_blank' style='color:#64748B; font-weight:600; text-decoration:none;'>📰 {item.get('source', '')}</a> &nbsp;•&nbsp; {item.get('date', '')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div style='height: 34px; display: flex; align-items: center; font-size: 0.95rem; margin-top: 2px;'>
+                            <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "")}</a>
+                            <span style='font-size: 0.8rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("🔗 공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            st.toast("기사 링크가 복사되었습니다! (시뮬레이션)")
+                        if st.button("📤", key=f"share_mk_{item['id']}_{i}", type="tertiary", help="공유하기"):
+                            st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -595,19 +623,24 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [핵심] 하단 액션바 (출처 + 텍스트 버튼)
-                    act_c1, act_c2, act_c3 = st.columns([4.5, 2, 2.5])
+                    # 💡 [핵심] 하단 액션바 영역
+                    act_c1, act_c2, act_c3 = st.columns([5.5, 1.5, 3])
                     with act_c1:
-                        st.markdown(f"<div style='padding-top:6px; font-size:0.75rem; color:#64748B;'><a href='{item.get('link', '#')}' target='_blank' style='color:#64748B; font-weight:600; text-decoration:none;'>📰 {item.get('source', '')}</a> &nbsp;•&nbsp; {item.get('date', '')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div style='height: 34px; display: flex; align-items: center; font-size: 0.95rem; margin-top: 2px;'>
+                            <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "")}</a>
+                            <span style='font-size: 0.8rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("🔗 공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            st.toast("기사 링크가 복사되었습니다! (시뮬레이션)")
+                        if st.button("📤", key=f"share_tp_{item['id']}_{i}", type="tertiary", help="공유하기"):
+                            st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream & 💡 주요 태그
+    # 🌊 Section 3: Sensing Stream 
     # ==========================
     if stream_news:
         st.divider()
@@ -637,12 +670,12 @@ else:
                     if item.get('community_buzz'):
                         buzz_tag = "<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>"
                     
-                    # 기존 스트림 카드 레이아웃 적용
+                    # 💡 [핵심] 출처 부분에 링크 <a> 태그 적용 및 폰트 확대 (0.95rem)
                     html_content = (
                         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
                         '<div style="display:flex; align-items:center; gap:8px;">'
                         '<div style="width:24px; height:24px; background:#f0f2f5; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:12px;">📰</div>'
-                        f'<div style="font-weight:600; font-size:0.85rem; color:#262626;">{item.get("source", "")}</div>'
+                        f'<a href="{item.get("link", "#")}" target="_blank" style="font-weight:800; font-size:0.95rem; color:#1E293B; text-decoration:none;">{item.get("source", "")}</a>'
                         '</div><div>'
                         f'<span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item.get("score", 0)}%</span> '
                         f'{buzz_tag}'
@@ -653,13 +686,13 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 하단 액션바 통일 적용
-                    act_c1, act_c2, act_c3 = st.columns([4.5, 2, 2.5])
+                    # 💡 하단 액션바 적용
+                    act_c1, act_c2, act_c3 = st.columns([5.5, 1.5, 3])
                     with act_c1:
-                        st.markdown(f"<div style='padding-top:6px; font-size:0.75rem; color:#64748B;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='height: 34px; display: flex; align-items: center; font-size: 0.8rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("🔗 공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
-                            st.toast("기사 링크가 복사되었습니다! (시뮬레이션)")
+                        if st.button("📤", key=f"share_st_{item['id']}_{i}", type="tertiary", help="공유하기"):
+                            st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
