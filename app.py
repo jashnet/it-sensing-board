@@ -735,10 +735,10 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤 공유", key=f"share_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
