@@ -741,7 +741,7 @@ else:
                             copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
                             st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
                     with act_c3:
-                        if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -783,7 +783,7 @@ else:
                             copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
                             st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
                     with act_c3:
-                        if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -830,5 +830,5 @@ else:
                             copy_to_clipboard(item.get("insight_title", item.get("title_en", "")), item.get("core_summary", item.get("summary_ko", "")), item.get("link", ""))
                             st.toast("기사 정보가 클립보드에 복사되었습니다! 📋")
                     with act_c3:
-                        if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
