@@ -162,7 +162,6 @@ def fetch_raw_news(args):
     except: pass
     return articles
 
-# 💡 UI 인자를 추가로 받아서 중앙에 상태를 그립니다.
 def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_text_ui=None):
     active_key = settings.get("api_key", "").strip()
     if not active_key: return {"final_news": [], "all_scores": []}
@@ -211,7 +210,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_
     total_items = len(raw_news)
     with ThreadPoolExecutor(max_workers=5) as executor:
         for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
-            # 💡 [핵심] 중앙 UI 업데이트
             if st_text_ui and pb_ui:
                 html_msg = f"<div style='text-align:center; padding:10px;'><h3 style='color:#0072FF;'>📡 AI가 기사 내용과 커뮤니티 버즈를 심층 분석하고 있습니다...</h3><p style='font-size:1.1rem; color:#555;'>({i+1} / {total_items} 완료)</p></div>"
                 st_text_ui.markdown(html_msg, unsafe_allow_html=True)
@@ -242,13 +240,12 @@ def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_
         else:
             news['community_buzz'] = False
 
-    # 💡 딕셔너리로 반환하여 원본 점수 분포를 기억하게 합니다.
     final_news = [n for n in news_pool if n['score'] >= _weight]
     final_news = sorted(final_news, key=lambda x: x.get('score', 0), reverse=True)[:settings["max_articles"]]
     
     return {
         "final_news": final_news,
-        "all_scores": [n.get('score', 0) for n in news_pool] # 커뮤니티 제외된 공식 뉴스들의 원본 점수들
+        "all_scores": [n.get('score', 0) for n in news_pool] 
     }
 
 # ==========================================
@@ -266,13 +263,29 @@ st.markdown("""<style>
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     div[data-testid="stButton"] button[kind="secondary"] { border-radius: 12px; background-color: transparent; border: 1px solid #CBD5E1; color: #475569; font-weight: 600; transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="secondary"]:hover { background-color: #F1F5F9; color: #0F172A; border-color: #94A3B8; }
+    
+    /* 💡 [핵심] 텍스트형(Tertiary) 버튼 디자인 오버라이딩 */
+    div[data-testid="stButton"] button[kind="tertiary"] {
+        padding: 0px 4px !important;
+        min-height: 0px !important;
+        height: auto !important;
+        font-size: 0.85rem !important;
+        color: #64748B !important;
+        font-weight: 600;
+    }
+    div[data-testid="stButton"] button[kind="tertiary"]:hover {
+        color: #0F172A !important;
+        background-color: transparent !important;
+        text-decoration: underline;
+    }
+
     .stTextInput>div>div>input { border-radius: 10px; }
     
     .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 2rem 2.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
     .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
     .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     
-    .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 10px; }
+    .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 5px; }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
     .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 15px; z-index: 3; color: white; }
@@ -286,11 +299,9 @@ st.markdown("""<style>
     .badge-tag { background: #ecf0f1; color: #333; font-weight: 600; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; margin-right: 8px; display: inline-block; margin-bottom: 8px;}
     
     .hero-title { font-size: 1.15rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-    .hero-source { font-size: 0.85rem; opacity: 0.9; }
     
     .section-header { font-size: 1.5rem; font-weight: 700; margin: 30px 0 20px 0; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
     .section-desc { font-size: 1rem; color: #888; font-weight: normal; margin-left: 5px; }
-    div[data-testid="stButton"] button { border-radius: 8px; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
 
 if "channels" not in st.session_state: st.session_state.channels = load_channels_from_file()
@@ -356,8 +367,8 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"], help="AI가 부여한 기사 관련도 점수입니다.")
-    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"])
-    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"])
+    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"], help="기준일로부터 며칠 전의 기사까지 긁어올지 결정합니다.")
+    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"], help="수집된 기사 중 화면에 표시할 최대 개수입니다.")
 
     st.markdown("<div class='sidebar-label'>Curation Settings</div>", unsafe_allow_html=True)
     current_tp_count = st.session_state.settings.get("top_picks_count", 6)
@@ -375,12 +386,11 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     
-    # 💡 [핵심] 사이드바 버튼을 누르면 상태만 변경하고, 메인 화면에서 작업을 실행합니다.
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
         st.session_state.settings["filter_weight"] = f_weight
         save_user_settings(st.session_state.current_user, st.session_state.settings)
-        st.session_state.run_sensing = True # 실행 플래그 ON
+        st.session_state.run_sensing = True
         st.rerun()
             
     if st.button("♻️ 원래 아침(자동) 버전으로 복귀", use_container_width=True):
@@ -398,7 +408,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 💡 [요청사항 1번] 중앙 프로그래스바 처리 영역
 if st.session_state.get("run_sensing", False):
     st.markdown("<br><br>", unsafe_allow_html=True)
     st_text_ui = st.empty()
@@ -419,7 +428,7 @@ if st.session_state.get("run_sensing", False):
     
     st.session_state.manual_news = result["final_news"]
     st.session_state.all_scores = result["all_scores"]
-    st.session_state.run_sensing = False # 플래그 초기화
+    st.session_state.run_sensing = False
     st.rerun()
 
 c1, c2 = st.columns([2, 1])
@@ -437,14 +446,11 @@ elif os.path.exists("today_news.json"):
         with open("today_news.json", "r", encoding="utf-8") as f: news_list = json.load(f)
     except: pass
 
-# 💡 [요청사항 2번] 기사가 0개일 때 점수 분포 대시보드 표시
 if not news_list:
     st.warning("📭 현재 설정된 조건(최소 점수)을 넘는 기사가 하나도 없습니다.")
-    
     all_scores = st.session_state.get("all_scores", [])
     if all_scores:
         st.info(f"💡 AI가 1차 수집한 **총 {len(all_scores)}개 기사**의 점수 분포입니다. 이를 참고하여 좌측의 설정을 변경해 보세요.")
-        
         score_ranges = {"90-100": 0, "70-89": 0, "50-69": 0, "0-49": 0}
         for s in all_scores:
             if s >= 90: score_ranges["90-100"] += 1
@@ -452,20 +458,11 @@ if not news_list:
             elif s >= 50: score_ranges["50-69"] += 1
             else: score_ranges["0-49"] += 1
         
-        st.markdown("<br>", unsafe_allow_html=True)
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("🔥 90~100점 (핵심 시그널)", f"{score_ranges['90-100']}개")
-        col2.metric("🏆 70~89점 (주요 동향)", f"{score_ranges['70-89']}개")
-        col3.metric("📝 50~69점 (참고 동향)", f"{score_ranges['50-69']}개")
-        col4.metric("🗑️ 0~49점 (노이즈/에러)", f"{score_ranges['0-49']}개")
-        
-        st.markdown(f"""
-        <div style="background:#F1F5F9; padding:15px; border-radius:8px; margin-top:20px;">
-            <b>👉 추천 해결 방법:</b><br>
-            현재 설정된 <b>[🎯 최소 매칭 점수]는 {st.session_state.settings['filter_weight']}점</b>입니다. <br>
-            위 분포를 확인하시고, 최소 점수 슬라이더를 <b>{min(all_scores) if all_scores else 50}점</b> 부근으로 낮추거나, 수집 기간을 <b>7일 이상</b>으로 늘린 뒤 다시 센싱을 돌려보세요!
-        </div>
-        """, unsafe_allow_html=True)
+        col1.metric("🔥 90~100점", f"{score_ranges['90-100']}개")
+        col2.metric("🏆 70~89점", f"{score_ranges['70-89']}개")
+        col3.metric("📝 50~69점", f"{score_ranges['50-69']}개")
+        col4.metric("🗑️ 0~49점", f"{score_ranges['0-49']}개")
     else:
         st.info("좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러 데이터를 수집해 보세요.")
 
@@ -539,6 +536,7 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 긱(Geek) 화제</span>"
                     
+                    # 오버레이에서 출처 제거, 제목만 띄움
                     html_content = (
                         '<div class="hero-img-box">'
                         f'<img src="{img_src}" class="hero-bg" onerror="this.src=\'https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW\';">'
@@ -548,14 +546,20 @@ else:
                         f'<span class="badge badge-score">MATCH {item.get("score", 0)}%</span> '
                         f'{buzz_badge}'
                         f'<div class="hero-title">{item.get("insight_title", item.get("title_en", ""))}</div>'
-                        f'<div class="hero-source">📰 {item.get("source", "")}</div>'
                         '</div></div>'
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    c_gap, c_btn = st.columns([5, 1])
-                    if c_btn.button("🤖", key=f"btn_mk_{item['id']}_{i}", help="AI 심층 분석"):
-                        show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
+                    # 💡 [핵심] 하단 액션바 (출처 + 텍스트 버튼)
+                    act_c1, act_c2, act_c3 = st.columns([4.5, 2, 2.5])
+                    with act_c1:
+                        st.markdown(f"<div style='padding-top:6px; font-size:0.75rem; color:#64748B;'><a href='{item.get('link', '#')}' target='_blank' style='color:#64748B; font-weight:600; text-decoration:none;'>📰 {item.get('source', '')}</a> &nbsp;•&nbsp; {item.get('date', '')}</div>", unsafe_allow_html=True)
+                    with act_c2:
+                        if st.button("🔗 공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                            st.toast("기사 링크가 복사되었습니다! (시뮬레이션)")
+                    with act_c3:
+                        if st.button("🤖 AI 분석", key=f"btn_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
     # 🏆 Section 2: Today's Top Picks
@@ -587,14 +591,20 @@ else:
                         f'<span class="badge badge-score">MATCH {item.get("score", 0)}%</span> '
                         f'{buzz_badge}'
                         f'<div class="hero-title">{item.get("insight_title", item.get("title_en", ""))}</div>'
-                        f'<div class="hero-source">📰 {item.get("source", "")}</div>'
                         '</div></div>'
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    c_gap, c_btn = st.columns([5, 1])
-                    if c_btn.button("🤖", key=f"btn_tp_{item['id']}_{i}", help="AI 심층 분석"):
-                        show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
+                    # 💡 [핵심] 하단 액션바 (출처 + 텍스트 버튼)
+                    act_c1, act_c2, act_c3 = st.columns([4.5, 2, 2.5])
+                    with act_c1:
+                        st.markdown(f"<div style='padding-top:6px; font-size:0.75rem; color:#64748B;'><a href='{item.get('link', '#')}' target='_blank' style='color:#64748B; font-weight:600; text-decoration:none;'>📰 {item.get('source', '')}</a> &nbsp;•&nbsp; {item.get('date', '')}</div>", unsafe_allow_html=True)
+                    with act_c2:
+                        if st.button("🔗 공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                            st.toast("기사 링크가 복사되었습니다! (시뮬레이션)")
+                    with act_c3:
+                        if st.button("🤖 AI 분석", key=f"btn_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
     # 🌊 Section 3: Sensing Stream & 💡 주요 태그
@@ -627,6 +637,7 @@ else:
                     if item.get('community_buzz'):
                         buzz_tag = "<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>"
                     
+                    # 기존 스트림 카드 레이아웃 적용
                     html_content = (
                         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
                         '<div style="display:flex; align-items:center; gap:8px;">'
@@ -642,6 +653,13 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    c_empty, c_btn = st.columns([2, 1])
-                    if c_btn.button("🤖 분석", key=f"btn_st_{item['id']}_{i}", use_container_width=True):
-                        show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
+                    # 💡 하단 액션바 통일 적용
+                    act_c1, act_c2, act_c3 = st.columns([4.5, 2, 2.5])
+                    with act_c1:
+                        st.markdown(f"<div style='padding-top:6px; font-size:0.75rem; color:#64748B;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
+                    with act_c2:
+                        if st.button("🔗 공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                            st.toast("기사 링크가 복사되었습니다! (시뮬레이션)")
+                    with act_c3:
+                        if st.button("🤖 AI 분석", key=f"btn_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
+                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
