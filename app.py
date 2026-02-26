@@ -28,7 +28,6 @@ def load_channels_from_file():
             with open(CHANNELS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            st.error(f"채널 파일을 읽는 중 오류 발생: {e}")
             return {}
     return {}
 
@@ -37,7 +36,7 @@ def save_channels_to_file(channels_data):
         with open(CHANNELS_FILE, "w", encoding="utf-8") as f:
             json.dump(channels_data, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        st.error(f"채널 파일 저장 실패: {e}")
+        pass
 
 def load_user_settings(user_id):
     fn = f"nod_samsung_user_{user_id}.json"
@@ -83,17 +82,19 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
     col1, col2 = st.columns([1, 2])
     with col1:
         img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
-        st.markdown(f"""
-            <div style="border-radius: 12px; overflow: hidden; border: 1px solid #eaeaea; background: #fdfdfd;">
-                <img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; display:block; border-bottom: 1px solid #eaeaea;">
-                <div style="padding: 16px;">
-                    <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700; display:inline-block; margin-bottom:8px;">MATCH {item['score']}%</span>
-                    <div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 8px; line-height: 1.4; color: #262626;">{item.get('insight_title', item['title_en'])}</div>
-                    <div style="font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 12px;">{item.get('core_summary', item.get('summary_ko', ''))}</div>
-                    <a href="{item['link']}" target="_blank" style="display:block; font-size:0.85rem; font-weight:bold; color:#0095f6; text-decoration:none;">원문 기사 열기 ↗</a>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        # 💡 HTML 들여쓰기 제거 (마크다운 버그 방지)
+        html_content = f"""
+<div style="border-radius: 12px; overflow: hidden; border: 1px solid #eaeaea; background: #fdfdfd;">
+    <img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; display:block; border-bottom: 1px solid #eaeaea;">
+    <div style="padding: 16px;">
+        <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700; display:inline-block; margin-bottom:8px;">MATCH {item['score']}%</span>
+        <div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 8px; line-height: 1.4; color: #262626;">{item.get('insight_title', item['title_en'])}</div>
+        <div style="font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 12px;">{item.get('core_summary', item.get('summary_ko', ''))}</div>
+        <a href="{item['link']}" target="_blank" style="display:block; font-size:0.85rem; font-weight:bold; color:#0095f6; text-decoration:none;">원문 기사 열기 ↗</a>
+    </div>
+</div>
+"""
+        st.markdown(html_content, unsafe_allow_html=True)
         
     with col2:
         if not api_key:
@@ -108,7 +109,7 @@ def show_analysis_modal(item, api_key, persona, base_prompt):
                     {base_prompt}\n\n[기사 정보]\n제목: {item['title_en']}\n요약: {item['summary_en']}
                     **[출력 지침 - 절대 준수]**
                     1. 리포트가 절대 길어지면 안 됩니다. 각 항목은 '2~3줄 이내의 짧은 Bullet Point'로 극도로 간략하게 핵심만 짚어주세요.
-                    2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하고, 이 기사를 바탕으로 스마트 디바이스/UX 기획자가 당장 기획에 적용해볼 만한 구체적이고 참신한 아이디어를 1~2개 제안해 주세요.
+                    2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하고, 당장 기획에 적용해볼 만한 참신한 아이디어를 제안해 주세요.
                     """
                     response = client.models.generate_content(model="gemini-2.5-flash", contents=analysis_prompt, config=config)
                     st.markdown(response.text)
@@ -216,8 +217,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
                 item['score'] = int(parsed_data.get('score', 50))
                 item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
                 item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
-                
-                # 💡 [핵심] 소셜 리스닝을 위한 데이터 추가 추출
                 item['content_type'] = parsed_data.get('content_type', 'news')
                 item['keywords'] = parsed_data.get('keywords', [])
             else: 
@@ -234,9 +233,7 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
         for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
             st_text.caption(f"⚡ AI 전략가가 실시간 분석 중입니다... ({i+1}/{len(raw_news)})")
             pb.progress((i + 1) / len(raw_news))
-            item = future.result()
-            # 커뮤니티 글은 필터 기준과 무관하게 일단 모두 통과시킴 (뒤에서 분리)
-            filtered_list.append(item)
+            filtered_list.append(future.result())
                 
     st_text.empty()
     pb.empty()
@@ -264,7 +261,7 @@ st.markdown("""<style>
     .badge-score { background: #34495e; color: white; }
     .badge-global { background: #9b59b6; color: white; }
     .badge-china { background: #e67e22; color: white; }
-    .badge-buzz { background: #f39c12; color: white; } /* 커뮤니티 버즈용 뱃지 색상 */
+    .badge-buzz { background: #f39c12; color: white; }
     
     .hero-title { font-size: 1.15rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     .hero-source { font-size: 0.85rem; opacity: 0.9; }
@@ -385,22 +382,15 @@ elif os.path.exists("today_news.json"):
 if not news_list:
     st.warning("📭 보여줄 뉴스가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
 else:
-    # ==========================================
-    # 🧠 [핵심] 소셜 리스닝 & 버즈 증폭 알고리즘
-    # ==========================================
     official_news = []
     community_posts = []
-    
-    # 1. 뉴스 vs 커뮤니티 분리
     for item in news_list:
         if item.get('content_type') == 'community':
             community_posts.append(item)
         else:
-            # 점수 미달인 공식 뉴스 필터링
             if item.get('score', 0) >= st.session_state.settings["filter_weight"]:
                 official_news.append(item)
 
-    # 2. 커뮤니티 키워드 빈도 추출
     community_keywords = []
     for cp in community_posts:
         kws = cp.get('keywords', [])
@@ -410,11 +400,9 @@ else:
     comm_kw_counts = Counter(community_keywords)
     hot_comm_keywords = set([k for k, v in comm_kw_counts.items() if v >= 1])
 
-    # 3. 공식 뉴스에 버즈 가산점 부여
     for news in official_news:
         news_kws = set([str(k).upper() for k in news.get('keywords', [])])
         overlap = news_kws.intersection(hot_comm_keywords)
-        
         if overlap:
             news['score'] = min(100, news['score'] + (len(overlap) * 5))
             news['community_buzz'] = True
@@ -422,15 +410,10 @@ else:
         else:
             news['community_buzz'] = False
 
-    # 4. 화면용 최종 리스트 재정렬 (커뮤니티 글은 화면에 아예 안 띄움)
     filtered_news_list = sorted(official_news, key=lambda x: x.get('score', 0), reverse=True)
 
-    # ==========================================
-    # 💡 큐레이션 (군집화 및 분배)
-    # ==========================================
     def get_word_set(text): return set(re.findall(r'\w+', str(text).lower()))
 
-    # 💡 Must Know는 글로벌 뉴스만 대상으로 군집화 (팀장님 요청 1번 반영)
     global_news_for_clustering = [item for item in filtered_news_list if item.get('category') == 'Global Innovation']
     
     clusters = []
@@ -498,20 +481,21 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 긱(Geek) 화제</span>"
                     
-                    st.markdown(f"""
-                    <div class="hero-img-box">
-                        <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW';">
-                        <div class="hero-overlay"></div>
-                        <div class="hero-content">
-                            <span class="badge badge-fire">{dup_badge}</span>
-                            <span class="badge badge-score">MATCH {item['score']}%</span>
-                            {buzz_badge}
-                            <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
-                            <div class="hero-source">📰 {item['source']}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
+                    # 💡 마크다운 들여쓰기 완벽 제거
+                    html_content = f"""
+<div class="hero-img-box">
+    <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW';">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+        <span class="badge badge-fire">{dup_badge}</span>
+        <span class="badge badge-score">MATCH {item['score']}%</span>
+        {buzz_badge}
+        <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
+        <div class="hero-source">📰 {item['source']}</div>
+    </div>
+</div>
+"""
+                    st.markdown(html_content, unsafe_allow_html=True)
                     c_gap, c_btn = st.columns([5, 1])
                     if c_btn.button("🤖", key=f"btn_mk_{item['id']}", help="AI 심층 분석"):
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
@@ -537,20 +521,21 @@ else:
                         buzz_words_str = ", ".join(item.get('buzz_words', []))
                         buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {buzz_words_str}'>💬 커뮤니티 화제</span>"
                     
-                    st.markdown(f"""
-                    <div class="hero-img-box">
-                        <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=TOP+PICK';">
-                        <div class="hero-overlay"></div>
-                        <div class="hero-content">
-                            {cat_badge}
-                            <span class="badge badge-score">MATCH {item['score']}%</span>
-                            {buzz_badge}
-                            <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
-                            <div class="hero-source">📰 {item['source']}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
+                    # 💡 마크다운 들여쓰기 완벽 제거
+                    html_content = f"""
+<div class="hero-img-box">
+    <img src="{img_src}" class="hero-bg" onerror="this.src='https://via.placeholder.com/800x600/1a1a1a/ffffff?text=TOP+PICK';">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+        {cat_badge}
+        <span class="badge badge-score">MATCH {item['score']}%</span>
+        {buzz_badge}
+        <div class="hero-title">{item.get('insight_title', item['title_en'])}</div>
+        <div class="hero-source">📰 {item['source']}</div>
+    </div>
+</div>
+"""
+                    st.markdown(html_content, unsafe_allow_html=True)
                     c_gap, c_btn = st.columns([5, 1])
                     if c_btn.button("🤖", key=f"btn_tp_{item['id']}", help="AI 심층 분석"):
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
@@ -573,22 +558,23 @@ else:
                     if item.get('community_buzz'):
                         buzz_tag = f"<span style='background:#f39c12; color:white; padding:2px 6px; border-radius:8px; font-size:0.65rem; font-weight:bold; margin-left:5px;'>💬 화제</span>"
                     
-                    st.markdown(f"""
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <div style="width:24px; height:24px; background:#f0f2f5; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:12px;">📰</div>
-                            <div style="font-weight:600; font-size:0.85rem; color:#262626;">{item['source']}</div>
-                        </div>
-                        <div>
-                            <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item['score']}%</span>
-                            {buzz_tag}
-                        </div>
-                    </div>
-                    <img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; display:block; margin-bottom:12px;" onerror="this.src='https://via.placeholder.com/600x338?text=No+Image';">
-                    <div style="font-weight:700; font-size:1.05rem; line-height:1.4; color:#262626; margin-bottom:8px;">💡 {title_text}</div>
-                    <div style="font-size:0.85rem; color:#444; line-height:1.5; margin-bottom:12px;">{summary_text}</div>
-                    """, unsafe_allow_html=True)
-                    
+                    # 💡 마크다운 들여쓰기 완벽 제거
+                    html_content = f"""
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div style="display:flex; align-items:center; gap:8px;">
+        <div style="width:24px; height:24px; background:#f0f2f5; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:12px;">📰</div>
+        <div style="font-weight:600; font-size:0.85rem; color:#262626;">{item['source']}</div>
+    </div>
+    <div>
+        <span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item['score']}%</span>
+        {buzz_tag}
+    </div>
+</div>
+<img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; display:block; margin-bottom:12px;" onerror="this.src='https://via.placeholder.com/600x338?text=No+Image';">
+<div style="font-weight:700; font-size:1.05rem; line-height:1.4; color:#262626; margin-bottom:8px;">💡 {title_text}</div>
+<div style="font-size:0.85rem; color:#444; line-height:1.5; margin-bottom:12px;">{summary_text}</div>
+"""
+                    st.markdown(html_content, unsafe_allow_html=True)
                     c_empty, c_btn = st.columns([2, 1])
                     if c_btn.button("🤖 분석", key=f"btn_st_{item['id']}", use_container_width=True):
                         show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
