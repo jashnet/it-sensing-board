@@ -140,7 +140,6 @@ def manage_channels_modal(cat):
             save_channels_to_file(st.session_state.channels)
             st.rerun()
 
-# 💡 [신규] Help & Architecture 팝업 다이어그램
 @st.dialog("🧠 NGEPT AI 큐레이션 파이프라인", width="large")
 def show_help_modal():
     st.markdown("""
@@ -196,20 +195,37 @@ def show_help_modal():
     </div>
     """, unsafe_allow_html=True)
 
-
 # ==========================================
-# 📡 [수집 및 AI 필터링 엔진]
+# 📡 [수집 및 AI 필터링 엔진 (디버깅 모드)]
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
     articles = []
     try:
+        # 💡 터미널 수집 중계 로그
+        print(f"\n📡 [수집 시작] {f['name']} ({f['url']})")
         d = feedparser.parse(f["url"])
+        
+        if not d.entries:
+            print(f"⚠️ [경고] {f['name']} - 피드에서 읽어온 기사가 0개입니다! (URL이 잘못되었거나, 사이트에서 차단함)")
+            return []
+            
+        print(f"🔍 {f['name']} - 총 {len(d.entries)}개의 기사 발견! 날짜 필터링을 시작합니다. (기준일: {limit.strftime('%Y-%m-%d')})")
+        
         for entry in d.entries[:15]:
             dt = entry.get('published_parsed') or entry.get('updated_parsed')
-            if not dt: continue
+            
+            # 날짜 정보가 없을 경우 스킵 (터미널 표출)
+            if not dt: 
+                print(f"   ❌ [탈락] 날짜 정보 없음: {entry.get('title', '제목 없음')}")
+                continue
+                
             p_date = datetime.fromtimestamp(time.mktime(dt))
-            if p_date < limit: continue
+            
+            # 수집 기간 외 기사 스킵
+            if p_date < limit: 
+                print(f"   ❌ [탈락] 너무 오래된 기사 ({p_date.strftime('%Y-%m-%d')}): {entry.title}")
+                continue
             
             thumbnail = ""
             if 'media_content' in entry and len(entry.media_content) > 0: thumbnail = entry.media_content[0].get('url', '')
@@ -228,7 +244,12 @@ def fetch_raw_news(args):
                 "category": cat, "date_obj": p_date, "date": p_date.strftime("%Y.%m.%d"),
                 "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300], "thumbnail": thumbnail
             })
-    except: pass
+            
+        print(f"✅ [수집 완료] {f['name']} - 최종 {len(articles)}개 기사 확보!")
+        
+    except Exception as e:
+        print(f"🚨 [에러 발생] {f['name']} 수집 중 치명적 오류: {e}")
+        
     return articles
 
 def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=None):
@@ -241,7 +262,6 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
     raw_news = []
     total_feeds = len(active_tasks)
     
-    # 💡 1단계: 수집 단계 실시간 애니메이션 진행률 표시
     if st_text_ui and pb_ui:
         st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 전 세계 매체에서 최신 뉴스를 수집 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_feeds} 채널 확인 완료)</p></div>", unsafe_allow_html=True)
         pb_ui.progress(0)
@@ -262,11 +282,8 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
 
     total_items = len(raw_news)
     if total_items == 0:
-        if st_text_ui:
-            st_text_ui.markdown("<div style='text-align:center; padding:10px;'><h3 style='color:#E74C3C;'>⚠️ 설정된 기간 내에 수집된 기사가 없습니다.</h3></div>", unsafe_allow_html=True)
         return []
 
-    # 💡 2단계: AI 분석 단계 준비
     if st_text_ui and pb_ui:
         st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사 확보! AI 심층 분석을 시작합니다...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
         pb_ui.progress(0)
@@ -310,7 +327,6 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
-            # 💡 3단계: AI 분석 실시간 애니메이션 진행률 표시
             if st_text_ui and pb_ui:
                 html_msg = f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} AI가 기사 내용과 커뮤니티 버즈를 분석 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>({i+1} / {total_items} 분석 완료)</p></div>"
                 st_text_ui.markdown(html_msg, unsafe_allow_html=True)
@@ -506,6 +522,9 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     
+    if st.button("ℹ️ 시스템 작동 원리 (Help)", use_container_width=True, type="secondary"):
+        show_help_modal()
+        
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
         save_user_settings(st.session_state.current_user, st.session_state.settings)
@@ -528,10 +547,27 @@ st.markdown("""
 
 if st.session_state.get("run_sensing", False):
     st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # 🚨 API 방어막 및 경고 알림
+    if not st.session_state.settings.get("api_key", "").strip():
+        st.error("🛑 [중단됨] 사이드바에 Gemini API Key가 없습니다! 키를 입력하고 [💾 Save Key]를 꼭 눌러주세요.")
+        st.session_state.run_sensing = False
+        st.stop()
+        
+    has_active_channel = False
+    for cat, feeds in st.session_state.channels.items():
+        if st.session_state.settings["category_active"].get(cat, True) and any(f.get("active", True) for f in feeds):
+            has_active_channel = True
+            break
+            
+    if not has_active_channel:
+        st.error("🛑 [중단됨] 수집할 RSS 채널이 하나도 없습니다! 사이드바 톱니바퀴(⚙️)를 눌러 채널을 추가해주세요.")
+        st.session_state.run_sensing = False
+        st.stop()
+
     st_text_ui = st.empty()
     pb_ui = st.progress(0)
     
-    # 애니메이션이 포함된 대기 메시지
     st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 실시간 데이터 파이프라인 가동 준비 중...</h3></div>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
     
@@ -543,6 +579,11 @@ if st.session_state.get("run_sensing", False):
         st_text_ui
     )
     
+    if not all_scored_news:
+        st.error("🛑 [중단됨] 수집된 기사가 0개입니다. 수집 기간을 늘리거나 다른 RSS URL을 추가해보세요. (자세한 이유는 터미널 창 로그 확인)")
+        st.session_state.run_sensing = False
+        st.stop()
+
     try:
         with open(MANUAL_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(all_scored_news, f, ensure_ascii=False, indent=4)
@@ -576,7 +617,7 @@ f_weight = st.session_state.settings.get("filter_weight", 70)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
 
 if not raw_news_pool:
-    st.warning("📭 수집된 데이터가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
+    st.warning("📭 수집된 데이터가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요! (실패시 터미널 창을 꼭 확인해주세요)")
 elif not news_list:
     st.warning(f"📭 수집은 완료되었으나, 최소 점수({f_weight}점)를 넘는 기사가 없습니다.")
     st.info(f"💡 전체 수집된 **총 {len(raw_news_pool)}개 기사**의 점수 분포를 확인하고 좌측 슬라이더를 조절해 보세요. (AI 재호출 없이 1초만에 화면이 바뀝니다!)")
@@ -745,7 +786,7 @@ else:
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream
+    # 🌊 Section 3: Sensing Stream 
     # ==========================
     if stream_news:
         st.divider()
