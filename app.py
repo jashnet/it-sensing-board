@@ -120,6 +120,7 @@ def fetch_raw_news(args):
     except: pass
     return articles
 
+@st.cache_data(ttl=600) 
 def get_filtered_news(settings, channels_data, _prompt, _weight):
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     
@@ -153,29 +154,44 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     pb = st.progress(0)
     st_text = st.empty()
     
+    # 💡 Streamlit 명찰 복사 (터미널 에러 방지)
+    current_ctx = get_script_run_ctx()
+
     def ai_scoring_worker(item):
+        add_script_run_ctx(ctx=current_ctx)
         try:
+            # 💡 [핵심 최적화 1] 구글 서버 과부하 방지를 위해 요청 전 0.1~1.5초 사이의 랜덤 휴식(Jitter) 부여
+            import random
+            time.sleep(random.uniform(0.1, 1.5))
+
             score_query = f"{_prompt}\n\n[평가 대상]\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=score_query
             )
             res = response.text.strip()
-            if res.startswith("```json"): res = res[7:-3].strip()
-            elif res.startswith("```"): res = res[3:-3].strip()
             
-            parsed_data = json.loads(res)
-            item['score'] = int(parsed_data.get('score', 50))
-            item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
-            item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
+            # 💡 [핵심 최적화 2] AI가 쓸데없는 말을 붙여도 순수 JSON `{ ... }` 부분만 완벽하게 적출
+            json_match = re.search(r'\{.*\}', res, re.DOTALL)
             
-        except Exception:
+            if json_match:
+                parsed_data = json.loads(json_match.group())
+                item['score'] = int(parsed_data.get('score', 50))
+                item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
+                item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
+            else:
+                raise ValueError("JSON 형식을 찾을 수 없음")
+                
+        except Exception as e:
+            # 💡 에러 발생 시 터미널에 원인을 출력하여 팀장님이 눈으로 확인할 수 있게 함
+            print(f"❌ 분석 실패 [{item['title_en'][:15]}...]: {e}")
             item['score'] = 50 
             item['insight_title'] = safe_translate(item['title_en'])
             item['core_summary'] = safe_translate(item['summary_en'])
         return item
 
-    with ThreadPoolExecutor(max_workers=30) as executor:
+    # 💡 [핵심 최적화 3] 구글 API 할당량 초과(429 에러)를 막기 위해 AI 스레드를 10개로 제한
+    with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_item = {executor.submit(ai_scoring_worker, item): item for item in raw_news}
         
         for i, future in enumerate(as_completed(future_to_item)):
@@ -183,6 +199,7 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             pb.progress((i + 1) / len(raw_news))
             
             item = future.result()
+            # 필터 점수를 넘긴 기사만 최종 리스트에 추가
             if item['score'] >= _weight:
                 filtered_list.append(item)
                 
