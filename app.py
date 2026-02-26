@@ -200,12 +200,23 @@ def fetch_raw_news(args):
     try:
         print(f"\n📡 [수집 시작] {f['name']} ({f['url']})")
         d = feedparser.parse(f["url"])
-        if not d.entries: return []
+        
+        if not d.entries:
+            print(f"⚠️ [경고] {f['name']} - 피드에서 읽어온 기사가 0개입니다!")
+            return []
+            
+        print(f"🔍 {f['name']} - 총 {len(d.entries)}개의 기사 발견!")
+        
         for entry in d.entries[:15]:
             dt = entry.get('published_parsed') or entry.get('updated_parsed')
-            if not dt: continue
+            
+            if not dt: 
+                continue
+                
             p_date = datetime.fromtimestamp(time.mktime(dt))
-            if p_date < limit: continue
+            
+            if p_date < limit: 
+                continue
             
             thumbnail = ""
             if 'media_content' in entry and len(entry.media_content) > 0: thumbnail = entry.media_content[0].get('url', '')
@@ -230,8 +241,12 @@ def fetch_raw_news(args):
                 "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300], 
                 "thumbnail": thumbnail
             })
+            
+        print(f"✅ [수집 완료] {f['name']} - 최종 {len(articles)}개 기사 통과 및 확보!")
+        
     except Exception as e:
-        print(f"🚨 [에러 발생] {f['name']} 수집 중 오류: {e}")
+        print(f"🚨 [에러 발생] {f['name']} 수집 중 치명적 오류: {e}")
+        
     return articles
 
 def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=None):
@@ -278,6 +293,7 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         try:
             import random
             time.sleep(random.uniform(0.1, 0.8))
+            
             score_query = f"{_prompt}\n\n[평가 대상]\n매체(출처): {item['source']}\n링크: {item['link']}\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
             response = client.models.generate_content(model="gemini-2.5-flash", contents=score_query)
             
@@ -355,18 +371,18 @@ st.markdown("""<style>
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
-    /* 💡 [액션바] AI 분석 버튼 (Secondary) - Soft Blue Fill & Smaller */
+    /* 💡 [수정됨] AI 분석 버튼: 크기 20% 축소 (28px -> 22px), 글자 크기 축소 (0.75rem -> 0.65rem) */
     div[data-testid="stButton"] button[kind="secondary"] { 
-        border-radius: 8px !important; 
-        min-height: 28px !important;
-        height: 28px !important;
-        padding: 0 12px !important;
+        border-radius: 6px !important; 
+        min-height: 22px !important;
+        height: 22px !important;
+        padding: 0 8px !important;
         border: none !important; 
         color: #0284C7 !important; 
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.75rem !important;
+        font-size: 0.65rem !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -376,18 +392,18 @@ st.markdown("""<style>
         color: #0369A1 !important; 
     }
     
-    /* 💡 [액션바] 공유 버튼 (Tertiary) - Soft Gray Fill & Smaller */
+    /* 💡 [수정됨] 공유 버튼: 크기 20% 축소 (28px -> 22px), 글자 크기 축소 (0.75rem -> 0.65rem) */
     div[data-testid="stButton"] button[kind="tertiary"] {
-        border-radius: 8px !important; 
-        min-height: 28px !important;
-        height: 28px !important;
-        padding: 0 12px !important;
+        border-radius: 6px !important; 
+        min-height: 22px !important;
+        height: 22px !important;
+        padding: 0 8px !important;
         border: none !important; 
         color: #475569 !important; 
         font-weight: 600 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.75rem !important;
+        font-size: 0.65rem !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -689,21 +705,19 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [UI 수정] 아이콘 제거, 버튼 비율 조정
+                    # 💡 [UI 튜닝] 액션바 영역 (버튼 비율 최적화)
                     act_c1, act_c2, act_c3 = st.columns([6, 1.8, 2.2])
                     with act_c1:
                         st.markdown(f"""
-                        <div style='height: 28px; display: flex; align-items: center; font-size: 0.95rem; margin-top: 2px;'>
+                        <div style='height: 22px; display: flex; align-items: center; font-size: 0.9rem; margin-top: 2px;'>
                             <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
-                            <span style='font-size: 0.8rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
+                            <span style='font-size: 0.75rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        # 💡 글씨만 있는 회색 필(Pill) 버튼
                         if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        # 💡 글씨만 있는 파란색 필(Pill) 버튼
                         if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
@@ -733,12 +747,13 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
+                    # 💡 [UI 튜닝] 액션바 영역 (버튼 비율 최적화)
                     act_c1, act_c2, act_c3 = st.columns([6, 1.8, 2.2])
                     with act_c1:
                         st.markdown(f"""
-                        <div style='height: 28px; display: flex; align-items: center; font-size: 0.95rem; margin-top: 2px;'>
+                        <div style='height: 22px; display: flex; align-items: center; font-size: 0.9rem; margin-top: 2px;'>
                             <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; text-decoration:none; margin-right:8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📰 {item.get("source", "Source")}</a>
-                            <span style='font-size: 0.8rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
+                            <span style='font-size: 0.75rem; color: #64748B; white-space: nowrap;'>{item.get("date", "")}</span>
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
@@ -784,9 +799,10 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
+                    # 💡 [UI 튜닝] 액션바 영역 (버튼 비율 최적화)
                     act_c1, act_c2, act_c3 = st.columns([6, 1.8, 2.2])
                     with act_c1:
-                        st.markdown(f"<div style='height: 28px; display: flex; align-items: center; font-size: 0.8rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='height: 22px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
                         if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
