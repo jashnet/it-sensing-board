@@ -784,10 +784,10 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤 공유", key=f"share_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -840,8 +840,8 @@ else:
                     with act_c1:
                         st.markdown(f"<div style='height: 34px; display: flex; align-items: center; font-size: 0.8rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤 공유", key=f"share_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("공유", key=f"share_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
