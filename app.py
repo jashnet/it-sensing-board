@@ -122,7 +122,7 @@ def safe_translate(text):
     except: return text
 
 # ==========================================
-# 📡 [수집 엔진] 뉴스 크롤링 및 초고속 병렬 필터링
+# 📡 [수집 엔진] 뉴스 크롤링 및 초고속 병렬 필터링 (수동 실행용)
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
@@ -151,7 +151,6 @@ def fetch_raw_news(args):
     except: pass
     return articles
 
-@st.cache_data(ttl=600) 
 def get_filtered_news(settings, channels_data, _prompt, _weight):
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     
@@ -165,7 +164,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
     if not active_tasks: return []
 
     raw_news = []
-    # 💡 [최적화 1] 채널이 160개로 늘어났으므로 수집 스레드를 40개로 대폭 상향
     with ThreadPoolExecutor(max_workers=40) as executor:
         futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
         for f in as_completed(futures): raw_news.extend(f.result())
@@ -199,9 +197,6 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             
             parsed_data = json.loads(res)
             item['score'] = int(parsed_data.get('score', 50))
-            
-            # 💡 [최적화 2] 번역기 동기 호출 병목 제거 (Lazy Evaluation)
-            # or 연산자를 써서 parsed_data에 값이 없을 때만 번역기를 돌립니다.
             item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
             item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
             
@@ -211,12 +206,11 @@ def get_filtered_news(settings, channels_data, _prompt, _weight):
             item['core_summary'] = safe_translate(item['summary_en'])
         return item
 
-    # 💡 [최적화 3] AI 호출 스레드를 15개에서 30개로 2배 확장 (유료 티어 활용)
     with ThreadPoolExecutor(max_workers=30) as executor:
         future_to_item = {executor.submit(ai_scoring_worker, item): item for item in raw_news}
         
         for i, future in enumerate(as_completed(future_to_item)):
-            st_text.caption(f"⚡ 초고속 다중 스레드 분석 중... ({i+1}/{len(raw_news)})")
+            st_text.caption(f"⚡ AI 수석 전략가가 실시간 분석 중입니다... ({i+1}/{len(raw_news)})")
             pb.progress((i + 1) / len(raw_news))
             
             item = future.result()
@@ -280,17 +274,22 @@ with st.sidebar:
 
     st.divider()
     
-    curr_key = st.session_state.settings.get("api_key", "").strip()
-    if not st.session_state.get("editing_key", False) and curr_key:
-        st.success("✅ API Key 연동됨")
-        if st.button("🔑 키 변경"):
-            st.session_state.editing_key = True; st.rerun()
+    # 💡 [보안 및 편의성 강화] Streamlit Secrets 자동 연동 로직
+    if "GEMINI_API_KEY" in st.secrets:
+        st.session_state.settings["api_key"] = st.secrets["GEMINI_API_KEY"]
+        st.success("🔒 시스템 API Key 자동 연동 완료")
     else:
-        new_key = st.text_input("Gemini API Key", value=curr_key, type="password")
-        if st.button("💾 저장"):
-            st.session_state.settings["api_key"] = new_key
-            save_user_settings(u_id, st.session_state.settings)
-            st.session_state.editing_key = False; st.rerun()
+        curr_key = st.session_state.settings.get("api_key", "").strip()
+        if not st.session_state.get("editing_key", False) and curr_key:
+            st.success("✅ 수동 API Key 연동됨")
+            if st.button("🔑 키 변경"):
+                st.session_state.editing_key = True; st.rerun()
+        else:
+            new_key = st.text_input("Gemini API Key", value=curr_key, type="password")
+            if st.button("💾 저장"):
+                st.session_state.settings["api_key"] = new_key
+                save_user_settings(u_id, st.session_state.settings)
+                st.session_state.editing_key = False; st.rerun()
 
     st.divider()
     
@@ -340,11 +339,28 @@ with st.sidebar:
         f_prompt = st.text_area("🔍 필터 프롬프트 (JSON 출력)", value=st.session_state.settings["filter_prompt"], height=200)
         st.session_state.settings["ai_prompt"] = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
 
-    if st.button("🚀 Sensing Start", use_container_width=True, type="primary"):
+    # 💡 [하이브리드 엔진] 수동 실행 및 자동 복귀 버튼
+    st.info("💡 평소엔 아침 자동 수집본을 보여줍니다. 설정을 변경했거나 당장 최신 뉴스를 보려면 아래 버튼을 누르세요.")
+    if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
         st.session_state.settings["filter_weight"] = f_weight
         save_user_settings(u_id, st.session_state.settings)
-        st.cache_data.clear()
+        
+        with st.spinner("📡 현재 기준 최신 기사 수집 및 AI 분석 중... (약 30초 소요)"):
+            live_result = get_filtered_news(
+                st.session_state.settings, 
+                st.session_state.channels, 
+                st.session_state.settings["filter_prompt"], 
+                st.session_state.settings["filter_weight"]
+            )
+            st.session_state.manual_news = live_result # 결과를 세션에 저장
+            st.success("✅ 실시간 업데이트 완료!")
+            time.sleep(1)
+            st.rerun()
+            
+    if st.button("♻️ 원래 아침(자동) 버전으로 돌아가기", use_container_width=True):
+        if "manual_news" in st.session_state:
+            del st.session_state["manual_news"]
         st.rerun()
         
     st.divider()
@@ -362,18 +378,28 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"🚨 조회 실패: {e}")
 
+# ==========================================
 # 2. 메인 컨텐츠 영역
+# ==========================================
 st.markdown("<h1 style='text-align:center;'>NOD Strategy Hub</h1>", unsafe_allow_html=True)
 st.caption(f"<div style='text-align:center;'>차세대 경험기획팀을 위한 Gems 통합 인사이트 보드</div><br>", unsafe_allow_html=True)
 
-news_list = get_filtered_news(
-    st.session_state.settings, 
-    st.session_state.channels, 
-    st.session_state.settings["filter_prompt"], 
-    st.session_state.settings["filter_weight"]
-)
+# 💡 [하이브리드 로딩 로직] 수동 데이터가 있으면 우선 표시, 없으면 JSON 읽기
+news_list = []
+if "manual_news" in st.session_state:
+    news_list = st.session_state.manual_news
+    st.success("📡 **Live Mode:** 수동으로 실시간 수집한 뉴스를 보고 계십니다.")
+elif os.path.exists("today_news.json"):
+    try:
+        with open("today_news.json", "r", encoding="utf-8") as f:
+            news_list = json.load(f)
+        st.info("🕒 **Batch Mode:** 매일 아침 자동 수집된 데일리 브리핑입니다.")
+    except Exception as e:
+        st.error("뉴스 데이터를 읽어오는 데 실패했습니다.")
 
-if news_list:
+if not news_list:
+    st.warning("📭 보여줄 뉴스가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
+else:
     top_picks = news_list[:6]
     stream_news = news_list[6:]
 
