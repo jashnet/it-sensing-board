@@ -18,9 +18,10 @@ from collections import Counter
 from prompts import GEMS_PERSONA, DEFAULT_FILTER_PROMPT
 
 # ==========================================
-# 📂 [데이터 관리] 채널 파일 입출력
+# 📂 [데이터 관리] 채널 파일 및 캐시 파일 입출력
 # ==========================================
 CHANNELS_FILE = "channels.json"
+MANUAL_CACHE_FILE = "manual_cache.json" # 💡 신규: 수동 센싱 결과를 저장할 파일
 
 def load_channels_from_file():
     if os.path.exists(CHANNELS_FILE):
@@ -162,12 +163,16 @@ def fetch_raw_news(args):
     except: pass
     return articles
 
-def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_text_ui=None):
+def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=None):
+    # 💡 [핵심 최적화] AI 채점만 하고 필터링은 하지 않은 채 "원본"을 반환합니다.
     active_key = settings.get("api_key", "").strip()
-    if not active_key: return {"final_news": [], "all_scores": []}
+    if not active_key: return []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
     active_tasks = [(cat, f, limit) for cat, feeds in channels_data.items() if settings["category_active"].get(cat, True) for f in feeds if f.get("active", True)]
-    if not active_tasks: return {"final_news": [], "all_scores": []}
+    if not active_tasks: return []
+
+    if st_text_ui:
+        st_text_ui.markdown("<div style='text-align:center; padding:10px;'><h3 style='color:#0072FF;'>📡 전 세계 RSS 채널에서 최신 뉴스를 수집하고 있습니다... (약 5~10초 소요)</h3></div>", unsafe_allow_html=True)
 
     raw_news = []
     with ThreadPoolExecutor(max_workers=40) as executor:
@@ -178,7 +183,16 @@ def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:fetch_limit]
     
     client = get_ai_client(active_key)
-    if not client or not _prompt: return {"final_news": [], "all_scores": []}
+    if not client or not _prompt: return []
+
+    total_items = len(raw_news)
+    if total_items == 0:
+        if st_text_ui:
+            st_text_ui.markdown("<div style='text-align:center; padding:10px;'><h3 style='color:#E74C3C;'>⚠️ 설정된 기간 내에 수집된 기사가 없습니다.</h3></div>", unsafe_allow_html=True)
+        return []
+
+    if st_text_ui:
+        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#00C6FF;'>🧠 총 {total_items}개 기사 확보! AI 수석 전략가가 분석을 시작합니다...</h3><p style='font-size:1.1rem; color:#555;'>(0 / {total_items} 완료)</p></div>", unsafe_allow_html=True)
 
     current_ctx = get_script_run_ctx()
     processed_items = []
@@ -188,12 +202,24 @@ def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_
         try:
             import random
             time.sleep(random.uniform(0.1, 0.8))
-            score_query = f"{_prompt}\n\n[평가 대상]\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
+            
+            # 방어막: Reddit, V2EX 등은 AI 착각 방지를 위해 명시
+            score_query = f"{_prompt}\n\n[평가 대상]\n매체(출처): {item['source']}\n링크: {item['link']}\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
             response = client.models.generate_content(model="gemini-2.5-flash", contents=score_query)
+            
             json_match = re.search(r'\{.*\}', response.text.strip(), re.DOTALL)
             if json_match:
                 parsed_data = json.loads(json_match.group())
-                item['content_type'] = parsed_data.get('content_type', 'news')
+                
+                url_lower = item['link'].lower()
+                source_lower = item['source'].lower()
+                community_domains = ['reddit', 'v2ex', 'hacker news', 'ycombinator', 'clien', 'dcinside', 'blind']
+                
+                if any(domain in url_lower or domain in source_lower for domain in community_domains):
+                    item['content_type'] = 'community'
+                else:
+                    item['content_type'] = parsed_data.get('content_type', 'news')
+                
                 item['score'] = int(parsed_data.get('score', 0)) if item['content_type'] == 'news' else 0
                 item['insight_title'] = parsed_data.get('insight_title') or safe_translate(item['title_en'])
                 item['core_summary'] = parsed_data.get('core_summary') or safe_translate(item['summary_en'])
@@ -207,11 +233,10 @@ def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_
             item['keywords'] = []
         return item
 
-    total_items = len(raw_news)
     with ThreadPoolExecutor(max_workers=5) as executor:
         for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
             if st_text_ui and pb_ui:
-                html_msg = f"<div style='text-align:center; padding:10px;'><h3 style='color:#0072FF;'>📡 AI가 기사 내용과 커뮤니티 버즈를 심층 분석하고 있습니다...</h3><p style='font-size:1.1rem; color:#555;'>({i+1} / {total_items} 완료)</p></div>"
+                html_msg = f"<div style='text-align:center; padding:10px;'><h3 style='color:#00C6FF;'>📡 AI가 기사 내용과 커뮤니티 버즈를 심층 분석하고 있습니다...</h3><p style='font-size:1.1rem; color:#555;'>({i+1} / {total_items} 완료)</p></div>"
                 st_text_ui.markdown(html_msg, unsafe_allow_html=True)
                 pb_ui.progress((i + 1) / total_items)
             processed_items.append(future.result())
@@ -240,13 +265,9 @@ def get_filtered_news(settings, channels_data, _prompt, _weight, pb_ui=None, st_
         else:
             news['community_buzz'] = False
 
-    final_news = [n for n in news_pool if n['score'] >= _weight]
-    final_news = sorted(final_news, key=lambda x: x.get('score', 0), reverse=True)[:settings["max_articles"]]
-    
-    return {
-        "final_news": final_news,
-        "all_scores": [n.get('score', 0) for n in news_pool] 
-    }
+    # 💡 필터링하지 않고, 점수가 매겨진 전체 뉴스 풀을 저장용으로 반환합니다.
+    news_pool = sorted(news_pool, key=lambda x: x.get('score', 0), reverse=True)
+    return news_pool
 
 # ==========================================
 # 🖥️ [UI] 메인 화면 및 CSS
@@ -262,7 +283,6 @@ st.markdown("""<style>
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
-    /* 💡 [액션바] 둥근 테두리 사각형(알약 모양) 버튼 공통 속성 (Secondary) */
     div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 16px !important; 
         min-height: 34px !important;
@@ -284,6 +304,24 @@ st.markdown("""<style>
         border-color: #94A3B8 !important; 
     }
     
+    div[data-testid="stButton"] button[kind="tertiary"] {
+        padding: 0 !important;
+        min-height: 34px !important;
+        height: 34px !important;
+        font-size: 1.2rem !important;
+        color: #64748B !important;
+        background: transparent !important;
+        border: none !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    div[data-testid="stButton"] button[kind="tertiary"]:hover {
+        color: #0F172A !important;
+        background-color: #F1F5F9 !important;
+        border-radius: 8px !important;
+    }
+
     .stTextInput>div>div>input { border-radius: 10px; }
     
     .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 2rem 2.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
@@ -371,9 +409,12 @@ with st.sidebar:
                 manage_channels_modal(cat)
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
-    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings["filter_weight"], help="AI가 부여한 기사 관련도 점수입니다.")
-    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings["sensing_period"], help="기준일로부터 며칠 전의 기사까지 긁어올지 결정합니다.")
-    st.session_state.settings["max_articles"] = st.slider("최대 분석 기사 수", 30, 100, st.session_state.settings["max_articles"], help="수집된 기사 중 화면에 표시할 최대 개수입니다.")
+    # 💡 UI 실시간 연동을 위해 session_state 값 직접 바인딩
+    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 70))
+    st.session_state.settings["filter_weight"] = f_weight
+    
+    st.session_state.settings["sensing_period"] = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings.get("sensing_period", 3))
+    st.session_state.settings["max_articles"] = st.slider("최대 화면 표시 기사 수", 30, 100, st.session_state.settings.get("max_articles", 60))
 
     st.markdown("<div class='sidebar-label'>Curation Settings</div>", unsafe_allow_html=True)
     current_tp_count = st.session_state.settings.get("top_picks_count", 6)
@@ -393,14 +434,12 @@ with st.sidebar:
     
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.settings["filter_prompt"] = f_prompt
-        st.session_state.settings["filter_weight"] = f_weight
         save_user_settings(st.session_state.current_user, st.session_state.settings)
         st.session_state.run_sensing = True
         st.rerun()
             
     if st.button("♻️ 원래 아침(자동) 버전으로 복귀", use_container_width=True):
-        if "manual_news" in st.session_state: del st.session_state["manual_news"]
-        if "all_scores" in st.session_state: del st.session_state["all_scores"]
+        st.session_state.is_live_mode = False
         st.rerun()
 
 # ==========================================
@@ -413,65 +452,83 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# 💡 [핵심 최적화] 실시간 센싱 버튼 클릭 시 동작
 if st.session_state.get("run_sensing", False):
     st.markdown("<br><br>", unsafe_allow_html=True)
     st_text_ui = st.empty()
     pb_ui = st.progress(0)
+    
+    st_text_ui.markdown("<div style='text-align:center; padding:10px;'><h3 style='color:#0072FF;'>🚀 실시간 데이터 파이프라인 가동 준비 중...</h3></div>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    result = get_filtered_news(
+    # 여기서 필터링 없이 전체 풀을 로드하여 캐시 파일로 저장합니다.
+    all_scored_news = get_filtered_news(
         st.session_state.settings, 
         st.session_state.channels, 
         st.session_state.settings["filter_prompt"], 
-        st.session_state.settings["filter_weight"],
         pb_ui, 
         st_text_ui
     )
     
+    # 로컬 캐시에 저장
+    try:
+        with open(MANUAL_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(all_scored_news, f, ensure_ascii=False, indent=4)
+        st.session_state.is_live_mode = True
+    except Exception as e:
+        st.error(f"캐시 저장 실패: {e}")
+        
     st_text_ui.empty()
     pb_ui.empty()
-    
-    st.session_state.manual_news = result["final_news"]
-    st.session_state.all_scores = result["all_scores"]
     st.session_state.run_sensing = False
     st.rerun()
 
 c1, c2 = st.columns([2, 1])
 with c1: st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
 with c2:
-    if "manual_news" in st.session_state:
+    if st.session_state.get("is_live_mode", False):
         st.markdown("<div style='text-align:right; color:#e74c3c; font-weight:bold; font-size:0.9rem;'>📡 Live Mode (실시간 수동 수집)</div>", unsafe_allow_html=True)
-    elif os.path.exists("today_news.json"):
+    else:
         st.markdown("<div style='text-align:right; color:#3498db; font-weight:bold; font-size:0.9rem;'>🕒 Batch Mode (일일 자동 브리핑)</div>", unsafe_allow_html=True)
 
-news_list = []
-if "manual_news" in st.session_state: news_list = st.session_state.manual_news
-elif os.path.exists("today_news.json"):
+# 💡 [핵심] 모드에 따라 읽어올 파일을 결정 (캐싱 로드)
+raw_news_pool = []
+target_file = MANUAL_CACHE_FILE if st.session_state.get("is_live_mode", False) else "today_news.json"
+
+if os.path.exists(target_file):
     try:
-        with open("today_news.json", "r", encoding="utf-8") as f: news_list = json.load(f)
+        with open(target_file, "r", encoding="utf-8") as f: 
+            raw_news_pool = json.load(f)
     except: pass
 
-if not news_list:
-    st.warning("📭 현재 설정된 조건(최소 점수)을 넘는 기사가 하나도 없습니다.")
-    all_scores = st.session_state.get("all_scores", [])
-    if all_scores:
-        st.info(f"💡 AI가 1차 수집한 **총 {len(all_scores)}개 기사**의 점수 분포입니다. 이를 참고하여 좌측의 설정을 변경해 보세요.")
-        score_ranges = {"90-100": 0, "70-89": 0, "50-69": 0, "0-49": 0}
-        for s in all_scores:
-            if s >= 90: score_ranges["90-100"] += 1
-            elif s >= 70: score_ranges["70-89"] += 1
-            elif s >= 50: score_ranges["50-69"] += 1
-            else: score_ranges["0-49"] += 1
-        
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("🔥 90~100점", f"{score_ranges['90-100']}개")
-        col2.metric("🏆 70~89점", f"{score_ranges['70-89']}개")
-        col3.metric("📝 50~69점", f"{score_ranges['50-69']}개")
-        col4.metric("🗑️ 0~49점", f"{score_ranges['0-49']}개")
-    else:
-        st.info("좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러 데이터를 수집해 보세요.")
+# 💡 [프론트엔드 실시간 필터링] 로드한 전체 데이터에서 UI 슬라이더 값에 따라 즉시 필터링
+f_weight = st.session_state.settings.get("filter_weight", 70)
+news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
+
+if not raw_news_pool:
+    st.warning("📭 수집된 데이터가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
+elif not news_list:
+    st.warning(f"📭 수집은 완료되었으나, 최소 점수({f_weight}점)를 넘는 기사가 없습니다.")
+    st.info(f"💡 전체 수집된 **총 {len(raw_news_pool)}개 기사**의 점수 분포를 확인하고 좌측 슬라이더를 조절해 보세요. (AI 재호출 없이 1초만에 화면이 바뀝니다!)")
+    
+    score_ranges = {"90-100": 0, "70-89": 0, "50-69": 0, "0-49": 0}
+    for n in raw_news_pool:
+        s = n.get("score", 0)
+        if s >= 90: score_ranges["90-100"] += 1
+        elif s >= 70: score_ranges["70-89"] += 1
+        elif s >= 50: score_ranges["50-69"] += 1
+        else: score_ranges["0-49"] += 1
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("🔥 90~100점", f"{score_ranges['90-100']}개")
+    col2.metric("🏆 70~89점", f"{score_ranges['70-89']}개")
+    col3.metric("📝 50~69점", f"{score_ranges['50-69']}개")
+    col4.metric("🗑️ 0~49점", f"{score_ranges['0-49']}개")
 
 else:
+    # 이하 기존 화면 렌더링 로직 (실시간 반영됨)
+    news_list = news_list[:st.session_state.settings.get("max_articles", 60)]
+    
     def get_word_set(text): return set(re.findall(r'\w+', str(text).lower()))
 
     global_news_for_clustering = [item for item in news_list if item.get('category') == 'Global Innovation']
@@ -554,7 +611,6 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [핵심] 액션바 5:2.5:2.5 비율 배분으로 통일된 알약 버튼 나란히 배치
                     act_c1, act_c2, act_c3 = st.columns([5, 2.5, 2.5])
                     with act_c1:
                         st.markdown(f"""
@@ -564,7 +620,6 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        # Share 버튼도 secondary(알약) 스타일 적용
                         if st.button("📤 공유", key=f"share_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
@@ -614,10 +669,10 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤 공유", key=f"share_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -670,8 +725,8 @@ else:
                     with act_c1:
                         st.markdown(f"<div style='height: 34px; display: flex; align-items: center; font-size: 0.8rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("📤 공유", key=f"share_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("공유", key=f"share_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("🤖 AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
