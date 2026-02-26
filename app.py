@@ -202,29 +202,24 @@ def fetch_raw_news(args):
     cat, f, limit = args
     articles = []
     try:
-        # 💡 터미널 수집 중계 로그
         print(f"\n📡 [수집 시작] {f['name']} ({f['url']})")
         d = feedparser.parse(f["url"])
         
         if not d.entries:
-            print(f"⚠️ [경고] {f['name']} - 피드에서 읽어온 기사가 0개입니다! (URL이 잘못되었거나, 사이트에서 차단함)")
+            print(f"⚠️ [경고] {f['name']} - 피드에서 읽어온 기사가 0개입니다!")
             return []
             
-        print(f"🔍 {f['name']} - 총 {len(d.entries)}개의 기사 발견! 날짜 필터링을 시작합니다. (기준일: {limit.strftime('%Y-%m-%d')})")
+        print(f"🔍 {f['name']} - 총 {len(d.entries)}개의 기사 발견!")
         
         for entry in d.entries[:15]:
             dt = entry.get('published_parsed') or entry.get('updated_parsed')
             
-            # 날짜 정보가 없을 경우 스킵 (터미널 표출)
             if not dt: 
-                print(f"   ❌ [탈락] 날짜 정보 없음: {entry.get('title', '제목 없음')}")
                 continue
                 
             p_date = datetime.fromtimestamp(time.mktime(dt))
             
-            # 수집 기간 외 기사 스킵
             if p_date < limit: 
-                print(f"   ❌ [탈락] 너무 오래된 기사 ({p_date.strftime('%Y-%m-%d')}): {entry.title}")
                 continue
             
             thumbnail = ""
@@ -240,12 +235,19 @@ def fetch_raw_news(args):
                     if img_tag and img_tag.get('src'): thumbnail = img_tag.get('src')
 
             articles.append({
-                "id": hashlib.md5(entry.link.encode()).hexdigest()[:12], "title_en": entry.title, "link": entry.link, "source": f["name"],
-                "category": cat, "date_obj": p_date, "date": p_date.strftime("%Y.%m.%d"),
-                "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300], "thumbnail": thumbnail
+                "id": hashlib.md5(entry.link.encode()).hexdigest()[:12], 
+                "title_en": entry.title, 
+                "link": entry.link, 
+                "source": f["name"],
+                "category": cat, 
+                # 💡 [버그 완벽 수정] datetime 객체를 JSON 저장이 가능하도록 텍스트(ISO 규격)로 강제 변환합니다!
+                "date_obj": p_date.isoformat(), 
+                "date": p_date.strftime("%Y.%m.%d"),
+                "summary_en": BeautifulSoup(entry.get("summary", ""), "html.parser").get_text()[:300], 
+                "thumbnail": thumbnail
             })
             
-        print(f"✅ [수집 완료] {f['name']} - 최종 {len(articles)}개 기사 확보!")
+        print(f"✅ [수집 완료] {f['name']} - 최종 {len(articles)}개 기사 통과 및 확보!")
         
     except Exception as e:
         print(f"🚨 [에러 발생] {f['name']} 수집 중 치명적 오류: {e}")
@@ -274,6 +276,7 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
                 st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 전 세계 매체에서 최신 뉴스를 수집 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>({i+1} / {total_feeds} 채널 확인 완료)</p></div>", unsafe_allow_html=True)
                 pb_ui.progress((i + 1) / total_feeds)
             
+    # 정렬 기준을 텍스트(isoformat) 기준으로 수정 (파이썬은 문자열 형태의 ISO 날짜도 완벽하게 정렬합니다)
     fetch_limit = int(settings["max_articles"] * 1.3)
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:fetch_limit]
     
@@ -548,7 +551,6 @@ st.markdown("""
 if st.session_state.get("run_sensing", False):
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    # 🚨 API 방어막 및 경고 알림
     if not st.session_state.settings.get("api_key", "").strip():
         st.error("🛑 [중단됨] 사이드바에 Gemini API Key가 없습니다! 키를 입력하고 [💾 Save Key]를 꼭 눌러주세요.")
         st.session_state.run_sensing = False
@@ -584,12 +586,15 @@ if st.session_state.get("run_sensing", False):
         st.session_state.run_sensing = False
         st.stop()
 
+    # 💡 [핵심] JSON 파일 저장 시 에러가 나면 멈춰서 화면에 띄워줍니다!
     try:
         with open(MANUAL_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(all_scored_news, f, ensure_ascii=False, indent=4)
         st.session_state.is_live_mode = True
     except Exception as e:
-        st.error(f"캐시 저장 실패: {e}")
+        st.error(f"🚨 캐시 파일 저장 실패! (이 화면을 캡처해주세요): {e}")
+        st.session_state.run_sensing = False
+        st.stop()
         
     st_text_ui.empty()
     pb_ui.empty()
@@ -779,10 +784,10 @@ else:
                         </div>
                         """, unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("📤 공유", key=f"share_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("🤖 AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -835,8 +840,8 @@ else:
                     with act_c1:
                         st.markdown(f"<div style='height: 34px; display: flex; align-items: center; font-size: 0.8rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                     with act_c2:
-                        if st.button("공유", key=f"share_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("📤 공유", key=f"share_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             st.toast("기사 링크가 복사되었습니다!")
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("🤖 AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
