@@ -397,7 +397,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 카드 안 액션 버튼: 기존 둥근 사각, 넓은 가로, 0.65rem 텍스트 (원복 유지) */
+    /* 카드 안 액션 버튼: 둥근 사각, 넓은 가로, 0.65rem 텍스트 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -440,10 +440,11 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [핵심] 모든 라디오 버튼(상단 토글 + 하단 필터 공통)을 Dribbble 'Days/Hours' 알약 디자인으로 통일 */
+    /* 💡 [요청사항 1, 2, 3] 모든 라디오 버튼 (상단 토글 + 하단 필터 공통)을 중앙 정렬 & 블루 컬러 알약 디자인으로 통일 */
     [data-testid="stRadio"] {
         display: flex !important;
         justify-content: center !important; /* 항상 중앙 정렬 */
+        width: 100% !important;
     }
     [data-testid="stRadio"] > div[role="radiogroup"] {
         background-color: #F1F5F9 !important; /* 연한 회색 바탕 */
@@ -458,7 +459,7 @@ st.markdown("""<style>
     [data-testid="stRadio"] > div[role="radiogroup"] label {
         background-color: transparent !important;
         border: none !important;
-        padding: 8px 20px !important; /* 내부 탭 여백 */
+        padding: 8px 24px !important; /* 넉넉한 내부 여백 */
         border-radius: 9999px !important; /* 내부 탭도 둥근 알약 */
         margin: 0 !important;
         cursor: pointer !important;
@@ -475,26 +476,26 @@ st.markdown("""<style>
     [data-testid="stRadio"] > div[role="radiogroup"] label > div:first-child {
         display: none !important;
     }
-    /* 선택된 탭: 그림자가 있는 하얀색 알약 */
+    /* 💡 선택된 탭: 파란색 바탕 + 그림자 */
     [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"],
     [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"],
     [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) {
-        background-color: #FFFFFF !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        background-color: #0072FF !important; 
+        box-shadow: 0 4px 12px rgba(0, 114, 255, 0.25) !important; 
     }
-    /* 미선택 텍스트 스타일 */
+    /* 💡 미선택 텍스트 스타일: 회색 */
     [data-testid="stRadio"] > div[role="radiogroup"] label p {
-        color: #64748B !important;
+        color: #64748B !important; 
         font-weight: 600 !important;
         font-size: 0.9rem !important;
         margin: 0 !important;
         padding: 0 !important;
     }
-    /* 선택 텍스트 스타일 */
+    /* 💡 선택 텍스트 스타일: 흰색 */
     [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p,
     [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"] p,
     [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) p {
-        color: #0F172A !important;
+        color: #FFFFFF !important; 
         font-weight: 800 !important;
     }
 
@@ -678,10 +679,9 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 💡 [요청사항 1] 상단 중앙 정렬된 모드 토글 (칼럼 제거)
+# 💡 [요청사항 1, 2] 상단 중앙 정렬된 모드 토글
 view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -861,10 +861,8 @@ else:
     # 🌊 Section 3: Sensing Stream 
     # ==========================
     if stream_news:
-        # 💡 [요청사항 2] st.divider() (가로줄) 삭제 완료
         st.markdown("<br><div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
         
-        # 💡 [요청사항 3] 스트림 필터 아이콘 제거 및 알약 컨테이너 적용
         filter_options = ["전체보기", "글로벌 혁신", "중국 동향", "일본/로보틱스", "커뮤니티 화제"]
         selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed", key="stream_filter")
         st.markdown('<br>', unsafe_allow_html=True)
