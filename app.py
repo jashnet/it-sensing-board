@@ -397,7 +397,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 💡 [수정] 카드 안 액션 버튼: 기존 둥근 사각, 좀 더 넓은 가로, 글자 크기 복원(0.65rem) */
+    /* 카드 안 액션 버튼: 기존 둥근 사각, 넓은 가로, 0.65rem 텍스트 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -440,51 +440,54 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [신규] Dribbble 스타일 세그먼트 토글(상단 라디오 버튼) - 컬러 블록 형태 */
+    /* 💡 [핵심] Dribbble 스타일 세그먼트 토글(상단 라디오 버튼) - Days/Hours 스타일 */
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] { 
-        background-color: #F8FAFC !important;
+        background-color: #F1F5F9 !important; /* 연한 회색 바탕 */
         padding: 4px !important;
-        border-radius: 8px !important;
+        border-radius: 999px !important; /* 완전한 알약 형태 */
         display: inline-flex !important;
-        gap: 2px !important;
-        border: 1px solid #E2E8F0 !important;
-        justify-content: flex-end !important;
+        gap: 0px !important;
+        border: none !important;
     }
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label {
         background-color: transparent !important;
         border: none !important;
-        padding: 6px 14px !important;
-        border-radius: 6px !important;
+        padding: 8px 20px !important;
+        border-radius: 999px !important; /* 둥근 알약 버튼 */
         cursor: pointer !important;
-        transition: all 0.2s ease !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         margin: 0 !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
     }
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label:hover {
-        background-color: #F1F5F9 !important;
+        background-color: #E2E8F0 !important;
     }
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"] div:first-child {
         display: none !important; /* 기본 동그라미 숨김 */
     }
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
-        background-color: #0284C7 !important;
-        box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2) !important;
+        background-color: #FFFFFF !important; /* 선택 시 흰색 바탕 */
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important; /* 부드러운 그림자 */
     }
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] p,
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] p {
-        color: #FFFFFF !important;
-        font-weight: 700 !important;
+        color: #0F172A !important; /* 선택 시 진한 텍스트 */
+        font-weight: 800 !important;
     }
     .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label p {
-        color: #64748B;
+        color: #64748B; /* 미선택 시 연한 텍스트 */
         font-weight: 600;
-        font-size: 0.8rem;
+        font-size: 0.85rem;
         margin: 0;
         padding: 0;
+        text-align: center !important;
     }
     .view-toggle-container [data-testid="stRadio"] {
         display: flex;
-        justify-content: flex-end;
+        justify-content: flex-end; /* 전체 컨테이너를 우측 정렬 */
     }
 
     .stTextInput>div>div>input { border-radius: 10px; }
@@ -670,6 +673,7 @@ with c1:
     st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
 with c2:
     st.markdown('<div class="view-toggle-container">', unsafe_allow_html=True)
+    # 💡 [요청사항] 라디오 옵션 텍스트에서 아이콘 제거
     view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -785,7 +789,7 @@ else:
                     st.markdown(html_content, unsafe_allow_html=True)
                     
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
@@ -829,7 +833,7 @@ else:
                     st.markdown(html_content, unsafe_allow_html=True)
                     
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
@@ -852,34 +856,7 @@ else:
         st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
         
         filter_options = ["✨ 전체보기", "🌐 글로벌 혁신", "🇨🇳 중국 동향", "🤖 일본/로보틱스", "💬 커뮤니티 화제"]
-        
-        st.markdown("""
-        <style>
-        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] { 
-            background-color: transparent !important;
-            padding: 0 !important;
-            border: none !important;
-            display: inline-flex !important;
-            gap: 10px !important;
-            flex-wrap: wrap; 
-        }
-        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label {
-            background-color: #F8FAFC !important;
-            border: 1px solid #E2E8F0 !important;
-            padding: 6px 16px !important;
-            border-radius: 24px !important;
-        }
-        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
-        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
-            background-color: #0F172A !important;
-            border-color: #0F172A !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        st.markdown('<div class="stream-filter-container">', unsafe_allow_html=True)
-        selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed", key="stream_filter")
-        st.markdown('</div>', unsafe_allow_html=True)
+        selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed")
         
         filtered_stream = []
         for item in stream_news:
@@ -922,7 +899,7 @@ else:
                         st.markdown(html_content, unsafe_allow_html=True)
                         
                         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                        act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
+                        act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
                         with act_c1:
                             st.markdown(f"""
                             <div style='display: flex; flex-direction: column; justify-content: center;'>
