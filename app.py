@@ -397,18 +397,19 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 💡 [요청사항 1] 메인 카드 안의 액션 버튼 타겟팅 - "이전 디자인 롤백 (크기 키움, 둥근 사각형)" */
+    /* AI 분석 버튼 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 20px !important; 
         min-height: 24px !important;  
         height: 24px !important;
-        padding: 0 10px !important;   
+        padding: 0 4px !important;    /* 💡 10px -> 4px로 줄여서 내부 공간 확보 */
         border: none !important; 
         color: #0284C7 !important; 
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.55rem !important; 
+        font-size: 10px !important;   /* 💡 원하시는 글자 크기 (예: 10px) */
+        white-space: nowrap !important; /* 💡 글자가 절대 튀어나가지 않고 한 줄 유지 */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -418,17 +419,19 @@ st.markdown("""<style>
         color: #0369A1 !important; 
     }
     
+    /* 공유 버튼 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"] {
         border-radius: 20px !important; 
         min-height: 24px !important;  
         height: 24px !important;
-        padding: 0 10px !important;   
+        padding: 0 4px !important;    /* 💡 10px -> 4px로 줄임 */
         border: none !important; 
         color: #475569 !important; 
         font-weight: 700 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.55rem !important; 
+        font-size: 10px !important;   /* 💡 원하시는 글자 크기 */
+        white-space: nowrap !important; /* 💡 튀어나옴 방지 */
         display: flex;
         align-items: center;
         justify-content: center;
