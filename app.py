@@ -408,7 +408,7 @@ st.markdown("""<style>
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 10px !important;   /* 💡 원하시는 글자 크기 (예: 10px) */
+        font-size: 8px !important;   /* 💡 원하시는 글자 크기 (예: 10px) */
         white-space: nowrap !important; /* 💡 글자가 절대 튀어나가지 않고 한 줄 유지 */
         display: flex;
         align-items: center;
@@ -430,7 +430,7 @@ st.markdown("""<style>
         font-weight: 700 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 10px !important;   /* 💡 원하시는 글자 크기 */
+        font-size: 8px !important;   /* 💡 원하시는 글자 크기 */
         white-space: nowrap !important; /* 💡 튀어나옴 방지 */
         display: flex;
         align-items: center;
