@@ -399,7 +399,7 @@ st.markdown("""<style>
 
     /* 💡 [요청사항 1] 메인 카드 안의 액션 버튼 타겟팅 - "이전 디자인 롤백 (크기 키움, 둥근 사각형)" */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
-        border-radius: 6px !important; 
+        border-radius: 20px !important; 
         min-height: 24px !important;  
         height: 24px !important;
         padding: 0 10px !important;   
@@ -419,7 +419,7 @@ st.markdown("""<style>
     }
     
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"] {
-        border-radius: 6px !important; 
+        border-radius: 20px !important; 
         min-height: 24px !important;  
         height: 24px !important;
         padding: 0 10px !important;   
@@ -793,7 +793,7 @@ else:
                     
                     # 💡 [요청사항 2, 3] 카드와 링크 사이 공간 띄움 & 링크 밑에 날짜 표시 & 버튼 간격 좁힘
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.8, 2.4])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 2.0, 2.4])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
@@ -837,7 +837,7 @@ else:
                     st.markdown(html_content, unsafe_allow_html=True)
                     
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.8, 2.4])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 2.0, 2.4])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
