@@ -796,7 +796,7 @@ else:
                     
                     # 💡 [요청사항 2, 3] 카드와 링크 사이 공간 띄움 & 링크 밑에 날짜 표시 & 버튼 간격 좁힘
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 2.6, 2.8])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.0, 3.2])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
