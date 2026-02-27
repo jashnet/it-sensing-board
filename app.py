@@ -408,7 +408,7 @@ st.markdown("""<style>
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 0.65rem !important; 
+        font-size: 0.55rem !important; 
         display: flex;
         align-items: center;
         justify-content: center;
@@ -428,7 +428,7 @@ st.markdown("""<style>
         font-weight: 700 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 0.65rem !important; 
+        font-size: 0.55rem !important; 
         display: flex;
         align-items: center;
         justify-content: center;
