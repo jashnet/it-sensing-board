@@ -229,8 +229,11 @@ def fetch_raw_news(args):
     cat, f, limit = args
     articles = []
     try:
+        print(f"\n📡 [수집 시작] {f['name']} ({f['url']})")
         d = feedparser.parse(f["url"])
+        
         if not d.entries: return []
+            
         for entry in d.entries[:15]:
             dt = entry.get('published_parsed') or entry.get('updated_parsed')
             if not dt: continue
@@ -383,9 +386,11 @@ st.markdown("""<style>
     [data-testid="stSidebar"] { background-color: #F8FAFC !important; border-right: 1px solid #E2E8F0; }
     .sidebar-label { color: #64748B; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1.5rem; margin-bottom: 0.75rem; padding-left: 5px; }
     
+    /* 사이드바 기본 Primary 버튼 */
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
+    /* 사이드바 기본 Secondary/Tertiary 버튼 (원래 크기 유지) */
     div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="secondary"],
     div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="tertiary"] {
         border-radius: 12px !important; 
@@ -395,7 +400,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 💡 [수정] Dribbble 스타일: 완전한 알약(12px) 형태, 초소형 타이포그래피(9px), 글자 두께와 자간 강조 */
+    /* 💡 [핵심] Dribbble 스타일: 완전한 알약(12px) 형태, 초소형 타이포그래피(9px), 글자 두께와 자간 강조 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 12px !important; 
         min-height: 24px !important;  
@@ -440,6 +445,7 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
+    /* 💡 [신규] Dribbble 스타일 칩(Pill) 라디오 버튼 필터 */
     [data-testid="stRadio"] { margin-bottom: 20px; }
     [data-testid="stRadio"] div[role="radiogroup"] { gap: 10px; flex-wrap: wrap; }
     [data-testid="stRadio"] div[role="radiogroup"] label {
@@ -456,7 +462,7 @@ st.markdown("""<style>
         border-color: #CBD5E1 !important;
     }
     [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"] div:first-child {
-        display: none !important; 
+        display: none !important; /* 기본 동그라미 숨김 */
     }
     [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
     [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
@@ -563,13 +569,15 @@ with st.sidebar:
                 manage_channels_modal(cat)
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
-    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 50))
+    
+    # 💡 [요청사항 반영] 툴팁(?) 부활
+    f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 50), help="AI가 평가한 기사 관련도 점수입니다. 점수가 높을수록 검색 조건에 부합합니다.")
     st.session_state.settings["filter_weight"] = f_weight
     
-    s_period = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings.get("sensing_period", 14))
+    s_period = st.slider("최근 N일 기사만 수집", 1, 30, st.session_state.settings.get("sensing_period", 14), help="지정된 기간 내의 최신 기사만 수집합니다.")
     st.session_state.settings["sensing_period"] = s_period
     
-    m_articles = st.slider("최대 화면 표시 기사 수", 30, 100, st.session_state.settings.get("max_articles", 50))
+    m_articles = st.slider("최대 화면 표시 기사 수", 30, 100, st.session_state.settings.get("max_articles", 50), help="대시보드에 노출될 최대 기사 개수입니다.")
     st.session_state.settings["max_articles"] = m_articles
 
     st.markdown("<div class='sidebar-label'>Curation Settings</div>", unsafe_allow_html=True)
@@ -594,15 +602,9 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     
+    # 💡 [요청사항 반영] 순서 조정 (수동 센싱 -> Help)
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.run_sensing = True
-        st.rerun()
-            
-    if st.button("♻️ 모닝 센싱 결과로 복귀", use_container_width=True):
-        st.session_state.is_live_mode = False
-        if os.path.exists(MANUAL_CACHE_FILE):
-            try: os.remove(MANUAL_CACHE_FILE)
-            except: pass
         st.rerun()
         
     if st.button("ℹ️ 시스템 작동 원리 (Help)", use_container_width=True, type="secondary"):
@@ -618,15 +620,18 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-if os.path.exists(MANUAL_CACHE_FILE): st.session_state.is_live_mode = True
-else: st.session_state.is_live_mode = False
+# 💡 [요청사항 반영] 토글 버튼의 초기값 세팅
+if "view_mode" not in st.session_state:
+    st.session_state.view_mode = "🕒 모닝 센싱"
 
+# 💡 [방어막] 화면 잠금/언락 시 중복 실행 방지
 if st.session_state.get("run_sensing", False):
+    st.session_state.run_sensing = False  # 즉시 끄기 (재실행 방지)
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     if not st.session_state.settings.get("api_key", "").strip():
         st.error("🛑 사이드바에 Gemini API Key가 없습니다!")
-        st.session_state.run_sensing = False; st.stop()
+        st.stop()
         
     has_active_channel = False
     for cat, feeds in st.session_state.channels.items():
@@ -635,7 +640,7 @@ if st.session_state.get("run_sensing", False):
             
     if not has_active_channel:
         st.error("🛑 수집할 RSS 채널이 없습니다!")
-        st.session_state.run_sensing = False; st.stop()
+        st.stop()
 
     st_text_ui = st.empty()
     pb_ui = st.progress(0)
@@ -647,30 +652,29 @@ if st.session_state.get("run_sensing", False):
     
     if not all_scored_news:
         st.error("🛑 수집된 기사가 0개입니다. 수집 기간을 늘려보세요.")
-        st.session_state.run_sensing = False; st.stop()
+        st.stop()
 
     try:
         with open(MANUAL_CACHE_FILE, "w", encoding="utf-8") as f: json.dump(all_scored_news, f, ensure_ascii=False, indent=4)
-        st.session_state.is_live_mode = True
+        # 💡 성공 시 토글을 "수동 센싱"으로 강제 변경
+        st.session_state.view_mode = "📡 수동 센싱"
     except Exception as e:
         st.error(f"🚨 저장 실패: {e}")
-        st.session_state.run_sensing = False; st.stop()
+        st.stop()
         
     st_text_ui.empty()
     pb_ui.empty()
-    st.session_state.run_sensing = False
     st.rerun()
 
-c1, c2 = st.columns([2, 1])
-with c1: st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
+# 💡 [요청사항 반영] 우상단 토글 라디오 버튼 적용
+c1, c2 = st.columns([1.5, 1])
+with c1: 
+    st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
 with c2:
-    if st.session_state.get("is_live_mode", False):
-        st.markdown("<div style='text-align:right; color:#e74c3c; font-weight:bold; font-size:0.9rem;'>📡 Live Sensing Mode (수동 수집 결과)</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div style='text-align:right; color:#3498db; font-weight:bold; font-size:0.9rem;'>🕒 Morning Sensing Mode (오늘 아침 결과)</div>", unsafe_allow_html=True)
+    view_mode = st.radio("모드", ["🕒 모닝 센싱", "📡 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
 
 raw_news_pool = []
-target_file = MANUAL_CACHE_FILE if st.session_state.get("is_live_mode", False) else "today_news.json"
+target_file = MANUAL_CACHE_FILE if st.session_state.view_mode == "📡 수동 센싱" else "today_news.json"
 
 if os.path.exists(target_file):
     try:
@@ -680,8 +684,12 @@ if os.path.exists(target_file):
 f_weight = st.session_state.settings.get("filter_weight", 50)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
 
+# 💡 [요청사항 반영] 데이터 없을 시 안내 텍스트 분기 처리
 if not raw_news_pool:
-    st.warning("📭 수집된 데이터가 없습니다. 좌측의 [🚀 실시간 수동 센싱 시작] 버튼을 눌러주세요!")
+    if st.session_state.view_mode == "🕒 모닝 센싱":
+        st.info("📭 수집된 뉴스가 없습니다.\n\n**모닝 센싱**은 매일 아침 지정된 시간에 자동으로 실행되어 글로벌 트렌드 뉴스를 수집합니다.")
+    else:
+        st.info("📭 수집된 뉴스가 없습니다.\n\n좌측 사이드바의 **[🚀 실시간 수동 센싱 시작]** 버튼을 눌러 관심 있는 뉴스를 실시간으로 수집해 보세요.")
 elif not news_list:
     st.warning(f"📭 수집은 완료되었으나, 최소 점수({f_weight}점)를 넘는 기사가 없습니다.")
     st.info(f"💡 전체 수집된 **총 {len(raw_news_pool)}개 기사**의 점수 분포를 확인하고 좌측 슬라이더를 조절해 보세요.")
@@ -762,10 +770,13 @@ else:
                     dup_badge = f"🔥 {item['dup_count']}개 매체 중복 보도" if item.get('dup_count', 1) > 1 else "🔥 글로벌 핫트렌드"
                     buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {', '.join(item.get('buzz_words', []))}'>💬 긱(Geek) 화제</span>" if item.get('community_buzz') else ""
                     
+                    # 💡 [요청사항 반영] 썸네일 클릭 시 원본 기사로 이동 (<a href> 추가)
                     html_content = (
                         '<div class="hero-img-box">'
+                        f'<a href="{item.get("link", "#")}" target="_blank" style="display:block; width:100%; height:100%;">'
                         f'<img src="{img_src}" class="hero-bg" onerror="this.src=\'https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW\';">'
                         '<div class="hero-overlay"></div>'
+                        '</a>'
                         '<div class="hero-content">'
                         f'<span class="badge badge-fire">{dup_badge}</span> '
                         f'<span class="badge badge-score">MATCH {item.get("score", 0)}%</span> '
@@ -775,8 +786,11 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [핵심] 버튼을 위해 가로 비율 30% 넓게 재조정 (5.4 : 2.3 : 2.3)
-                    act_c1, act_c2, act_c3 = st.columns([5.4, 2.3, 2.3])
+                    # 💡 [요청사항 반영] 카드 본문과 버튼 사이 여백 두 배로 확장
+                    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+                    
+                    # 💡 [요청사항 반영] 액션버튼 영역을 30% 넓힘 + 간격 가깝게 붙임 [5.8 (기사명) : 1.0 (빈공간) : 1.4 (공유) : 1.8 (AI)]
+                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
                     with act_c1:
                         st.markdown(f"""
                         <div style='height: 24px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
@@ -806,8 +820,10 @@ else:
                     
                     html_content = (
                         '<div class="hero-img-box">'
+                        f'<a href="{item.get("link", "#")}" target="_blank" style="display:block; width:100%; height:100%;">'
                         f'<img src="{img_src}" class="hero-bg" onerror="this.src=\'https://via.placeholder.com/800x600/1a1a1a/ffffff?text=TOP+PICK\';">'
                         '<div class="hero-overlay"></div>'
+                        '</a>'
                         '<div class="hero-content">'
                         f'{cat_badge} '
                         f'<span class="badge badge-score">MATCH {item.get("score", 0)}%</span> '
@@ -817,7 +833,8 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    act_c1, act_c2, act_c3 = st.columns([5.4, 2.3, 2.3])
+                    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
                     with act_c1:
                         st.markdown(f"""
                         <div style='height: 24px; display: flex; align-items: center; font-size: 0.85rem; margin-top: 2px;'>
@@ -833,7 +850,7 @@ else:
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
-    # 🌊 Section 3: Sensing Stream
+    # 🌊 Section 3: Sensing Stream 
     # ==========================
     if stream_news:
         st.divider()
@@ -874,13 +891,16 @@ else:
                             f'<span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700;">MATCH {item.get("score", 0)}%</span> '
                             f'{buzz_tag}'
                             '</div></div>'
+                            f'<a href="{item.get("link", "#")}" target="_blank">'
                             f'<img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; display:block; margin-bottom:12px;" onerror="this.src=\'https://via.placeholder.com/600x338?text=No+Image\';">'
+                            f'</a>'
                             f'<div style="font-weight:700; font-size:1.05rem; line-height:1.4; color:#262626; margin-bottom:8px;">💡 {item.get("insight_title", item.get("title_en", ""))}</div>'
                             f'<div style="font-size:0.85rem; color:#444; line-height:1.5; margin-bottom:12px;">{item.get("core_summary", item.get("summary_ko", ""))}</div>'
                         )
                         st.markdown(html_content, unsafe_allow_html=True)
                         
-                        act_c1, act_c2, act_c3 = st.columns([5.4, 2.3, 2.3])
+                        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+                        act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
                         with act_c1:
                             st.markdown(f"<div style='height: 24px; display: flex; align-items: center; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{item.get('date', '')}</div>", unsafe_allow_html=True)
                         with act_c2:
