@@ -397,19 +397,19 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* AI 분석 버튼 */
+    /* 💡 [수정] 카드 안 액션 버튼: 기존 둥근 사각, 좀 더 넓은 가로, 글자 크기 복원(0.65rem) */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
-        border-radius: 20px !important; 
+        border-radius: 6px !important; 
         min-height: 24px !important;  
         height: 24px !important;
-        padding: 0 4px !important;    /* 💡 10px -> 4px로 줄여서 내부 공간 확보 */
+        padding: 0 10px !important;   
         border: none !important; 
         color: #0284C7 !important; 
         font-weight: 700 !important; 
         background-color: #E0F2FE !important;
         transition: all 0.2s ease; 
-        font-size: 8px !important;   /* 💡 원하시는 글자 크기 (예: 10px) */
-        white-space: nowrap !important; /* 💡 글자가 절대 튀어나가지 않고 한 줄 유지 */
+        font-size: 0.65rem !important; 
+        white-space: nowrap !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -419,19 +419,18 @@ st.markdown("""<style>
         color: #0369A1 !important; 
     }
     
-    /* 공유 버튼 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="tertiary"] {
-        border-radius: 20px !important; 
+        border-radius: 6px !important; 
         min-height: 24px !important;  
         height: 24px !important;
-        padding: 0 4px !important;    /* 💡 10px -> 4px로 줄임 */
+        padding: 0 10px !important;   
         border: none !important; 
         color: #475569 !important; 
         font-weight: 700 !important; 
         background-color: #F1F5F9 !important;
         transition: all 0.2s ease; 
-        font-size: 8px !important;   /* 💡 원하시는 글자 크기 */
-        white-space: nowrap !important; /* 💡 튀어나옴 방지 */
+        font-size: 0.65rem !important; 
+        white-space: nowrap !important;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -441,52 +440,51 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [요청사항 2] 우상단 토글 탭 우측 정렬 */
-    .view-toggle [data-testid="stRadio"] {
-        display: flex;
-        justify-content: flex-end;
-    }
-    
-    /* Dribbble 스타일 칩(Pill) 라디오 버튼 필터 */
-    [data-testid="stRadio"] div[role="radiogroup"] { 
-        background-color: #F1F5F9 !important;
+    /* 💡 [신규] Dribbble 스타일 세그먼트 토글(상단 라디오 버튼) - 컬러 블록 형태 */
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] { 
+        background-color: #F8FAFC !important;
         padding: 4px !important;
-        border-radius: 10px !important;
+        border-radius: 8px !important;
         display: inline-flex !important;
         gap: 2px !important;
-        flex-wrap: wrap; 
+        border: 1px solid #E2E8F0 !important;
+        justify-content: flex-end !important;
     }
-    [data-testid="stRadio"] div[role="radiogroup"] label {
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label {
         background-color: transparent !important;
         border: none !important;
         padding: 6px 14px !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
         cursor: pointer !important;
         transition: all 0.2s ease !important;
         margin: 0 !important;
     }
-    [data-testid="stRadio"] div[role="radiogroup"] label:hover {
-        background-color: rgba(255,255,255,0.5) !important;
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label:hover {
+        background-color: #F1F5F9 !important;
     }
-    [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"] div:first-child {
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"] div:first-child {
         display: none !important; /* 기본 동그라미 숨김 */
     }
-    [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
-    [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
-        background-color: #FFFFFF !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
+        background-color: #0284C7 !important;
+        box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2) !important;
     }
-    [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] p,
-    [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] p {
-        color: #0F172A !important;
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] p,
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] p {
+        color: #FFFFFF !important;
         font-weight: 700 !important;
     }
-    [data-testid="stRadio"] div[role="radiogroup"] label p {
+    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label p {
         color: #64748B;
         font-weight: 600;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         margin: 0;
         padding: 0;
+    }
+    .view-toggle-container [data-testid="stRadio"] {
+        display: flex;
+        justify-content: flex-end;
     }
 
     .stTextInput>div>div>input { border-radius: 10px; }
@@ -516,9 +514,8 @@ st.markdown("""<style>
 
 if "channels" not in st.session_state: st.session_state.channels = load_channels_from_file()
 
-# 💡 [요청사항 1] 잠금 방어 로직 (session_state 초기화 방지)
 if "view_mode" not in st.session_state:
-    st.session_state.view_mode = "🕒 데일리 모닝 센싱"
+    st.session_state.view_mode = "데일리 모닝 센싱"
 
 with st.sidebar:
     if "current_user" not in st.session_state:
@@ -580,7 +577,6 @@ with st.sidebar:
                 manage_channels_modal(cat)
 
     st.markdown("<div class='sidebar-label'>AI Filters</div>", unsafe_allow_html=True)
-    # 💡 툴팁(물음표) 반영
     f_weight = st.slider("🎯 최소 매칭 점수", 0, 100, st.session_state.settings.get("filter_weight", 50), help="AI가 평가한 기사 관련도 점수입니다. 점수가 높을수록 검색 조건에 부합합니다.")
     st.session_state.settings["filter_weight"] = f_weight
     
@@ -594,7 +590,6 @@ with st.sidebar:
     current_tp_count = st.session_state.settings.get("top_picks_count", 6)
     current_tp_ratio = st.session_state.settings.get("top_picks_global_ratio", 70)
     
-    # 💡 툴팁(물음표) 반영
     tp_count_options = [3, 6, 9, 12]
     tp_count = st.selectbox("🏆 Today's Picks 노출 개수", options=tp_count_options, index=tp_count_options.index(current_tp_count) if current_tp_count in tp_count_options else 1, help="대시보드 상단 영역에 표시할 핵심 기사의 총 개수입니다.")
     st.session_state.settings["top_picks_count"] = tp_count
@@ -613,7 +608,6 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-label'>Actions</div>", unsafe_allow_html=True)
     
-    # 💡 [요청사항 반영] 불필요한 버튼 삭제 & 순서 조정
     if st.button("🚀 실시간 수동 센싱 시작", use_container_width=True, type="primary"):
         st.session_state.run_sensing = True
         st.rerun()
@@ -631,9 +625,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 💡 [요청사항 1] 화면 잠금/언락 시 중복 실행 버그 완벽 차단
 if st.session_state.get("run_sensing", False):
-    st.session_state.run_sensing = False  # 즉시 끄기
+    st.session_state.run_sensing = False
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     if not st.session_state.settings.get("api_key", "").strip():
@@ -663,7 +656,7 @@ if st.session_state.get("run_sensing", False):
 
     try:
         with open(MANUAL_CACHE_FILE, "w", encoding="utf-8") as f: json.dump(all_scored_news, f, ensure_ascii=False, indent=4)
-        st.session_state.view_mode = "📡 실시간 수동 센싱"
+        st.session_state.view_mode = "실시간 수동 센싱"
     except Exception as e:
         st.error(f"🚨 저장 실패: {e}")
         st.stop()
@@ -672,17 +665,16 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-# 💡 [요청사항 2] 우상단 토글 라디오 버튼 적용 및 우측 정렬 클래스 할당
-c1, c2 = st.columns([1, 1.2])
+c1, c2 = st.columns([1, 1])
 with c1: 
     st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
 with c2:
-    st.markdown('<div class="view-toggle">', unsafe_allow_html=True)
-    view_mode = st.radio("모드", ["🕒 데일리 모닝 센싱", "📡 실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
+    st.markdown('<div class="view-toggle-container">', unsafe_allow_html=True)
+    view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
     st.markdown('</div>', unsafe_allow_html=True)
 
 raw_news_pool = []
-target_file = MANUAL_CACHE_FILE if st.session_state.view_mode == "📡 실시간 수동 센싱" else "today_news.json"
+target_file = MANUAL_CACHE_FILE if st.session_state.view_mode == "실시간 수동 센싱" else "today_news.json"
 
 if os.path.exists(target_file):
     try:
@@ -692,9 +684,8 @@ if os.path.exists(target_file):
 f_weight = st.session_state.settings.get("filter_weight", 50)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
 
-# 💡 분기 안내 메시지 처리
 if not raw_news_pool:
-    if st.session_state.view_mode == "🕒 데일리 모닝 센싱":
+    if st.session_state.view_mode == "데일리 모닝 센싱":
         st.info("📭 수집된 뉴스가 없습니다.\n\n**데일리 모닝 센싱**은 매일 아침 지정된 시간에 자동으로 실행되어 글로벌 트렌드 뉴스를 수집합니다.")
     else:
         st.info("📭 수집된 뉴스가 없습니다.\n\n좌측 사이드바의 **[🚀 실시간 수동 센싱 시작]** 버튼을 눌러 관심 있는 뉴스를 실시간으로 수집해 보세요.")
@@ -778,7 +769,6 @@ else:
                     dup_badge = f"🔥 {item['dup_count']}개 매체 중복 보도" if item.get('dup_count', 1) > 1 else "🔥 글로벌 핫트렌드"
                     buzz_badge = f"<span class='badge badge-buzz' title='커뮤니티 언급: {', '.join(item.get('buzz_words', []))}'>💬 긱(Geek) 화제</span>" if item.get('community_buzz') else ""
                     
-                    # 💡 [요청사항 3] 썸네일 클릭 시 원본 기사로 이동
                     html_content = (
                         '<div class="hero-img-box">'
                         f'<a href="{item.get("link", "#")}" target="_blank" style="display:block; width:100%; height:100%;">'
@@ -794,9 +784,8 @@ else:
                     )
                     st.markdown(html_content, unsafe_allow_html=True)
                     
-                    # 💡 [요청사항 2, 3] 카드와 링크 사이 공간 띄움 & 링크 밑에 날짜 표시 & 버튼 간격 좁힘
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
@@ -840,7 +829,7 @@ else:
                     st.markdown(html_content, unsafe_allow_html=True)
                     
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
@@ -863,7 +852,34 @@ else:
         st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
         
         filter_options = ["✨ 전체보기", "🌐 글로벌 혁신", "🇨🇳 중국 동향", "🤖 일본/로보틱스", "💬 커뮤니티 화제"]
-        selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed")
+        
+        st.markdown("""
+        <style>
+        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] { 
+            background-color: transparent !important;
+            padding: 0 !important;
+            border: none !important;
+            display: inline-flex !important;
+            gap: 10px !important;
+            flex-wrap: wrap; 
+        }
+        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label {
+            background-color: #F8FAFC !important;
+            border: 1px solid #E2E8F0 !important;
+            padding: 6px 16px !important;
+            border-radius: 24px !important;
+        }
+        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
+        .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
+            background-color: #0F172A !important;
+            border-color: #0F172A !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="stream-filter-container">', unsafe_allow_html=True)
+        selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed", key="stream_filter")
+        st.markdown('</div>', unsafe_allow_html=True)
         
         filtered_stream = []
         for item in stream_news:
@@ -906,11 +922,10 @@ else:
                         st.markdown(html_content, unsafe_allow_html=True)
                         
                         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                        act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
+                        act_c1, act_space, act_c2, act_c3 = st.columns([5.8, 1.0, 1.4, 1.8])
                         with act_c1:
                             st.markdown(f"""
                             <div style='display: flex; flex-direction: column; justify-content: center;'>
-                                <a href='{item.get("link", "#")}' target='_blank' style='color:#1E293B; font-weight:800; font-size: 0.85rem; text-decoration:none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2;'>📰 {item.get("source", "Source")}</a>
                                 <span style='font-size: 0.7rem; color: #64748B; margin-top: 3px;'>{item.get("date", "")}</span>
                             </div>
                             """, unsafe_allow_html=True)
