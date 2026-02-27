@@ -840,7 +840,7 @@ else:
                     st.markdown(html_content, unsafe_allow_html=True)
                     
                     st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 2.6, 2.8])
+                    act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
                     with act_c1:
                         st.markdown(f"""
                         <div style='display: flex; flex-direction: column; justify-content: center;'>
@@ -852,7 +852,7 @@ else:
                         if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
-                        if st.button("AI분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
+                        if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
 
     # ==========================
@@ -906,7 +906,7 @@ else:
                         st.markdown(html_content, unsafe_allow_html=True)
                         
                         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                        act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 2.6, 2.8])
+                        act_c1, act_space, act_c2, act_c3 = st.columns([7.8, 2.0, 3.2, 3.5])
                         with act_c1:
                             st.markdown(f"""
                             <div style='display: flex; flex-direction: column; justify-content: center;'>
@@ -918,5 +918,5 @@ else:
                             if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
                                 show_share_modal(item)
                         with act_c3:
-                            if st.button("AI분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
+                            if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                                 show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
