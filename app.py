@@ -397,7 +397,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 카드 안 액션 버튼: 기존 둥근 사각, 넓은 가로, 0.65rem 텍스트 */
+    /* 카드 안 액션 버튼: 기존 둥근 사각, 넓은 가로, 0.65rem 텍스트 (원복) */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -440,54 +440,72 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [핵심] Dribbble 스타일 세그먼트 토글(상단 라디오 버튼) - Days/Hours 스타일 */
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] { 
-        background-color: #F1F5F9 !important; /* 연한 회색 바탕 */
+    /* 💡 [핵심] 범용 라디오 버튼 (하단 Sensing Stream 필터용 - 개별 칩 스타일) */
+    [data-testid="stRadio"] > div[role="radiogroup"] {
+        background-color: transparent !important;
+        display: flex !important;
+        flex-direction: row !important;
+        gap: 8px !important;
+        flex-wrap: wrap !important;
+    }
+    [data-testid="stRadio"] > div[role="radiogroup"] > label {
+        background-color: #F8FAFC !important;
+        border: 1px solid #CBD5E1 !important;
+        padding: 6px 16px !important;
+        border-radius: 20px !important;
+        margin: 0 !important;
+        cursor: pointer !important;
+    }
+    [data-testid="stRadio"] > div[role="radiogroup"] > label div[data-baseweb="radio"] div:first-child {
+        display: none !important; /* 동그라미 숨김 */
+    }
+    [data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"],
+    [data-testid="stRadio"] > div[role="radiogroup"] > label[aria-checked="true"] {
+        background-color: #0F172A !important;
+        border-color: #0F172A !important;
+    }
+    [data-testid="stRadio"] > div[role="radiogroup"] > label p {
+        color: #475569 !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+    }
+    [data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"] p,
+    [data-testid="stRadio"] > div[role="radiogroup"] > label[aria-checked="true"] p {
+        color: #FFFFFF !important;
+    }
+
+    /* 💡 [핵심] 우상단 토글 전용 CSS (Dribbble Days/Hours 스타일 세그먼트 컨트롤) */
+    /* Streamlit의 구조상 2번째 칼럼에 들어가는 라디오를 강제 타겟팅합니다 */
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] {
+        display: flex;
+        justify-content: flex-end; /* 전체를 우측 끝으로 밀기 */
+    }
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] > div[role="radiogroup"] {
+        background-color: #E2E8F0 !important; /* 연한 회색 바탕 */
         padding: 4px !important;
-        border-radius: 999px !important; /* 완전한 알약 형태 */
-        display: inline-flex !important;
-        gap: 0px !important;
+        border-radius: 12px !important; /* 알약 컨테이너 */
+        gap: 0 !important; /* 틈새 제거 */
         border: none !important;
     }
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label {
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] > div[role="radiogroup"] > label {
         background-color: transparent !important;
         border: none !important;
-        padding: 8px 20px !important;
-        border-radius: 999px !important; /* 둥근 알약 버튼 */
-        cursor: pointer !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        margin: 0 !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
+        padding: 6px 20px !important;
+        border-radius: 8px !important; /* 내부 탭 모서리 */
+        transition: all 0.3s ease !important;
     }
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label:hover {
-        background-color: #E2E8F0 !important;
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"],
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] > div[role="radiogroup"] > label[aria-checked="true"] {
+        background-color: #FFFFFF !important; /* 선택 시 흰색 탭 */
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important; /* 그림자로 떠보이게 */
     }
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"] div:first-child {
-        display: none !important; /* 기본 동그라미 숨김 */
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] > div[role="radiogroup"] > label p {
+        color: #64748B !important; /* 미선택 텍스트 */
+        font-weight: 700 !important;
     }
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"],
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] {
-        background-color: #FFFFFF !important; /* 선택 시 흰색 바탕 */
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important; /* 부드러운 그림자 */
-    }
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] p,
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label[aria-checked="true"] p {
-        color: #0F172A !important; /* 선택 시 진한 텍스트 */
-        font-weight: 800 !important;
-    }
-    .view-toggle-container [data-testid="stRadio"] div[role="radiogroup"] label p {
-        color: #64748B; /* 미선택 시 연한 텍스트 */
-        font-weight: 600;
-        font-size: 0.85rem;
-        margin: 0;
-        padding: 0;
-        text-align: center !important;
-    }
-    .view-toggle-container [data-testid="stRadio"] {
-        display: flex;
-        justify-content: flex-end; /* 전체 컨테이너를 우측 정렬 */
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"] p,
+    [data-testid="stColumn"]:nth-of-type(2) [data-testid="stRadio"] > div[role="radiogroup"] > label[aria-checked="true"] p {
+        color: #0F172A !important; /* 선택 텍스트 */
     }
 
     .stTextInput>div>div>input { border-radius: 10px; }
@@ -629,7 +647,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.session_state.get("run_sensing", False):
-    st.session_state.run_sensing = False
+    st.session_state.run_sensing = False  # 즉시 끄기
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     if not st.session_state.settings.get("api_key", "").strip():
@@ -668,14 +686,12 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-c1, c2 = st.columns([1, 1])
+# 💡 [핵심] 우상단 토글 라디오 버튼 배치 (아무런 클래스 없이 순수하게 생성)
+c1, c2 = st.columns([1, 1.2])
 with c1: 
     st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
 with c2:
-    st.markdown('<div class="view-toggle-container">', unsafe_allow_html=True)
-    # 💡 [요청사항] 라디오 옵션 텍스트에서 아이콘 제거
     view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
-    st.markdown('</div>', unsafe_allow_html=True)
 
 raw_news_pool = []
 target_file = MANUAL_CACHE_FILE if st.session_state.view_mode == "실시간 수동 센싱" else "today_news.json"
@@ -688,6 +704,7 @@ if os.path.exists(target_file):
 f_weight = st.session_state.settings.get("filter_weight", 50)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
 
+# 💡 분기 안내 메시지 처리
 if not raw_news_pool:
     if st.session_state.view_mode == "데일리 모닝 센싱":
         st.info("📭 수집된 뉴스가 없습니다.\n\n**데일리 모닝 센싱**은 매일 아침 지정된 시간에 자동으로 실행되어 글로벌 트렌드 뉴스를 수집합니다.")
@@ -856,7 +873,7 @@ else:
         st.markdown("<div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
         
         filter_options = ["✨ 전체보기", "🌐 글로벌 혁신", "🇨🇳 중국 동향", "🤖 일본/로보틱스", "💬 커뮤니티 화제"]
-        selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed")
+        selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed", key="stream_filter")
         
         filtered_stream = []
         for item in stream_news:
