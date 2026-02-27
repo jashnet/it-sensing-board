@@ -223,7 +223,7 @@ def show_help_modal():
     st.markdown(html_content, unsafe_allow_html=True)
 
 # ==========================================
-# 📡 [수집 및 AI 필터링 엔진]
+# 📡 [수집 및 AI 필터링 엔진] - 투트랙(Two-track) 수집 적용
 # ==========================================
 def fetch_raw_news(args):
     cat, f, limit = args
@@ -271,7 +271,7 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
     active_tasks = [(cat, f, limit) for cat, feeds in channels_data.items() if settings["category_active"].get(cat, True) for f in feeds if f.get("active", True)]
     if not active_tasks: return []
 
-    raw_news = []
+    all_raw_items = []
     total_feeds = len(active_tasks)
     
     if st_text_ui and pb_ui:
@@ -281,23 +281,43 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
     with ThreadPoolExecutor(max_workers=40) as executor:
         futures = [executor.submit(fetch_raw_news, t) for t in active_tasks]
         for i, f in enumerate(as_completed(futures)):
-            raw_news.extend(f.result())
+            all_raw_items.extend(f.result())
             if st_text_ui and pb_ui:
                 st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 전 세계 매체에서 최신 뉴스를 수집 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>({i+1} / {total_feeds} 채널 확인 완료)</p></div>", unsafe_allow_html=True)
                 pb_ui.progress((i + 1) / total_feeds)
             
+    # 💡 [핵심 업데이트] 뉴스 vs 커뮤니티 투트랙(Two-track) 분리 확보 로직
+    community_domains = ['reddit', 'v2ex', 'hacker news', 'ycombinator', 'clien', 'dcinside', 'blind']
+    raw_news = []
+    raw_community = []
+    
+    for item in all_raw_items:
+        url_lower = item['link'].lower()
+        source_lower = item['source'].lower()
+        if any(domain in url_lower or domain in source_lower for domain in community_domains):
+            raw_community.append(item)
+        else:
+            raw_news.append(item)
+            
+    # 1트랙: 일반 뉴스는 설정값의 1.3배수 확보
     fetch_limit = int(settings["max_articles"] * 1.3)
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:fetch_limit]
+    
+    # 2트랙: 커뮤니티는 뉴스 수집 제한에 밀리지 않도록 무조건 별도로 최신순 40개 확보!
+    raw_community = sorted(raw_community, key=lambda x: x['date_obj'], reverse=True)[:40]
+    
+    # 분석을 위해 다시 합침
+    combined_raw = raw_news + raw_community
     
     client = get_ai_client(active_key)
     if not client or not _prompt: return []
 
-    total_items = len(raw_news)
+    total_items = len(combined_raw)
     if total_items == 0:
         return []
 
     if st_text_ui and pb_ui:
-        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사 확보! AI 심층 분석을 시작합니다...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
+        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사(뉴스 {len(raw_news)}개 + 커뮤니티 {len(raw_community)}개) 확보! AI 분석 시작...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
         pb_ui.progress(0)
 
     current_ctx = get_script_run_ctx()
@@ -338,7 +358,7 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         return item
 
     with ThreadPoolExecutor(max_workers=5) as executor:
-        for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in raw_news})):
+        for i, future in enumerate(as_completed({executor.submit(ai_scoring_worker, item): item for item in combined_raw})):
             if st_text_ui and pb_ui:
                 html_msg = f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} AI가 기사 내용과 커뮤니티 버즈를 분석 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>({i+1} / {total_items} 분석 완료)</p></div>"
                 st_text_ui.markdown(html_msg, unsafe_allow_html=True)
@@ -397,7 +417,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 카드 안 액션 버튼: 둥근 사각, 넓은 가로, 0.65rem 텍스트 */
+    /* 카드 안 액션 버튼: 기존 둥근 사각, 넓은 가로, 0.65rem 텍스트 (원복 유지) */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -440,10 +460,10 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [요청사항 1, 2, 3] 모든 라디오 버튼 (상단 토글 + 하단 필터 공통)을 중앙 정렬 & 블루 컬러 알약 디자인으로 통일 */
+    /* 💡 [핵심] 모든 라디오 버튼(상단 토글 + 하단 필터 공통)을 중앙 정렬 & 블루 포인트 컬러로 통일 */
     [data-testid="stRadio"] {
         display: flex !important;
-        justify-content: center !important; /* 항상 중앙 정렬 */
+        justify-content: center !important; /* 항상 화면 중앙 정렬 */
         width: 100% !important;
     }
     [data-testid="stRadio"] > div[role="radiogroup"] {
@@ -459,7 +479,7 @@ st.markdown("""<style>
     [data-testid="stRadio"] > div[role="radiogroup"] label {
         background-color: transparent !important;
         border: none !important;
-        padding: 8px 24px !important; /* 넉넉한 내부 여백 */
+        padding: 8px 24px !important; /* 내부 탭 여백 */
         border-radius: 9999px !important; /* 내부 탭도 둥근 알약 */
         margin: 0 !important;
         cursor: pointer !important;
@@ -476,14 +496,14 @@ st.markdown("""<style>
     [data-testid="stRadio"] > div[role="radiogroup"] label > div:first-child {
         display: none !important;
     }
-    /* 💡 선택된 탭: 파란색 바탕 + 그림자 */
+    /* 💡 선택된 탭: 파란색 바탕 + 그림자 (블루 포인트) */
     [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"],
     [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"],
     [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) {
         background-color: #0072FF !important; 
         box-shadow: 0 4px 12px rgba(0, 114, 255, 0.25) !important; 
     }
-    /* 💡 미선택 텍스트 스타일: 회색 */
+    /* 미선택 텍스트 스타일: 회색 */
     [data-testid="stRadio"] > div[role="radiogroup"] label p {
         color: #64748B !important; 
         font-weight: 600 !important;
@@ -681,7 +701,7 @@ if st.session_state.get("run_sensing", False):
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 💡 [요청사항 1, 2] 상단 중앙 정렬된 모드 토글
+# 💡 [요청사항 반영] 상단 중앙 정렬된 모드 토글
 view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -864,6 +884,7 @@ else:
         st.markdown("<br><div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
         
         filter_options = ["전체보기", "글로벌 혁신", "중국 동향", "일본/로보틱스", "커뮤니티 화제"]
+        
         selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed", key="stream_filter")
         st.markdown('<br>', unsafe_allow_html=True)
         
