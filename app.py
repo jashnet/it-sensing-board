@@ -397,7 +397,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 카드 안 액션 버튼: 기존 둥근 사각, 넓은 가로, 0.65rem 텍스트 (원복) */
+    /* 카드 안 액션 버튼 (기존 유지) */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -440,10 +440,10 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [수정] 우상단 토글 전용 CSS (Dribbble Days/Hours 스타일 세그먼트 컨트롤) */
+    /* 💡 [요청사항 반영] 상단 토글 라디오 버튼 중앙 정렬 및 블루 컬러 반영 */
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] {
         display: flex !important;
-        justify-content: flex-end !important;
+        justify-content: center !important; /* 중앙 정렬 */
         align-items: center !important;
     }
     /* 짙은 회색 알약 바탕 */
@@ -464,7 +464,7 @@ st.markdown("""<style>
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label {
         background-color: transparent !important;
         border: none !important;
-        padding: 8px 20px !important;
+        padding: 8px 24px !important; /* 버튼 여유 공간 */
         border-radius: 9999px !important;
         margin: 0 !important;
         cursor: pointer !important;
@@ -473,30 +473,30 @@ st.markdown("""<style>
         align-items: center !important;
         justify-content: center !important;
     }
-    /* 선택된 버튼(라벨) - 흰색 알약 & 그림자 */
+    /* 💡 선택된 버튼(라벨) - 블루 계열 & 그림자 적용 */
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"],
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"],
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) {
-        background-color: #FFFFFF !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06) !important;
+        background-color: #0072FF !important; 
+        box-shadow: 0 4px 12px rgba(0, 114, 255, 0.25) !important; 
     }
     /* 텍스트 스타일 - 미선택 */
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label p {
         color: #6B7280 !important;
         font-weight: 600 !important;
-        font-size: 0.85rem !important;
+        font-size: 0.9rem !important;
         margin: 0 !important;
         padding: 0 !important;
     }
-    /* 텍스트 스타일 - 선택 */
+    /* 💡 텍스트 스타일 - 선택 (흰색) */
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p,
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"] p,
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child(2) [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) p {
-        color: #111827 !important;
+        color: #FFFFFF !important;
         font-weight: 700 !important;
     }
 
-    /* 💡 [수정] 하단 필터 스트림 (Chips) 라디오 숨김 처리 보강 */
+    /* 하단 필터 스트림 (Chips) 라디오 숨김 처리 보강 */
     .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label div[data-baseweb="radio"],
     .stream-filter-container [data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
         display: none !important;
@@ -507,6 +507,9 @@ st.markdown("""<style>
     .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 2rem 2.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
     .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
     .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    /* 💡 [요청사항 반영] 서브 타이틀 CSS 추가 */
+    .hero-subtitle { margin-top: 15px; font-size: 1.1rem; color: #64748B; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 0; }
     
     .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 5px; }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
@@ -633,10 +636,12 @@ with st.sidebar:
 # ==========================================
 # 4. 메인 컨텐츠 영역
 # ==========================================
+# 💡 [요청사항 반영] 서브 타이틀 배너 영역에 적용
 st.markdown("""
 <div class="hero-banner">
     <div class="hero-badge">AI-POWERED CURATION</div>
     <h1 class="hero-h1">NGEPT Sensing Dashboard</h1>
+    <p class="hero-subtitle">차세대 경험기획팀을 위한 데일리 센싱 분석 보드</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -680,12 +685,14 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-c1, c2 = st.columns([1, 1.2])
-with c1: 
-    st.caption("차세대 경험기획팀을 위한 글로벌/중국 트렌드 심층 분석 보드")
-with c2:
-    # 💡 [핵심] 순수하게 st.radio만 생성하고 CSS로 강제 매핑합니다
+st.markdown("<br>", unsafe_allow_html=True)
+
+# 💡 [요청사항 반영] 중앙 정렬된 토글 라디오 버튼 배치
+t_col1, t_col2, t_col3 = st.columns([1, 2, 1])
+with t_col2:
     view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 raw_news_pool = []
 target_file = MANUAL_CACHE_FILE if st.session_state.view_mode == "실시간 수동 센싱" else "today_news.json"
@@ -867,7 +874,6 @@ else:
         
         filter_options = ["✨ 전체보기", "🌐 글로벌 혁신", "🇨🇳 중국 동향", "🤖 일본/로보틱스", "💬 커뮤니티 화제"]
         
-        # 하단 필터는 별도 클래스로 래핑하여 디자인 적용
         st.markdown('<div class="stream-filter-container">', unsafe_allow_html=True)
         selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed")
         st.markdown('</div>', unsafe_allow_html=True)
