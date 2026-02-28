@@ -88,7 +88,7 @@ def save_user_settings(user_id, settings):
         json.dump(settings, f, ensure_ascii=False, indent=4)
 
 # ==========================================
-# 🧠 [AI 엔진] & 💡 [모달 UI]
+# 🧠 [AI 엔진] & 💡 [모달 UI (리포트 기능 추가)]
 # ==========================================
 def get_ai_client(api_key):
     if not api_key or len(api_key.strip()) < 10: return None
@@ -101,37 +101,163 @@ def safe_translate(text):
     try: return GoogleTranslator(source='auto', target='ko').translate(text)
     except: return text
 
-@st.dialog("🤖 AI 수석 전략가 심층 분석 리포트", width="large")
-def show_analysis_modal(item, api_key, persona, base_prompt):
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
-        html_content = (
-            '<div style="border-radius: 12px; overflow: hidden; border: 1px solid #eaeaea; background: #fdfdfd;">'
-            f'<img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; display:block; border-bottom: 1px solid #eaeaea;">'
-            '<div style="padding: 16px;">'
-            f'<span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700; display:inline-block; margin-bottom:8px;">MATCH {item.get("score", 0)}%</span>'
-            f'<div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 8px; line-height: 1.4; color: #262626;">{item.get("insight_title", item.get("title_en", ""))}</div>'
-            f'<div style="font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 12px;">{item.get("core_summary", item.get("summary_ko", ""))}</div>'
-            f'<a href="{item.get("link", "#")}" target="_blank" style="display:block; font-size:0.85rem; font-weight:bold; color:#0095f6; text-decoration:none;">원문 기사 열기 ↗</a>'
-            '</div></div>'
-        )
-        st.markdown(html_content, unsafe_allow_html=True)
-        
-    with col2:
-        if not api_key:
-            st.error("⚠️ 사이드바에 API Key가 없습니다.")
-            return
-        with st.spinner("💎 핵심 시그널과 기획 아이디어를 도출 중입니다..."):
-            client = get_ai_client(api_key)
-            if client:
-                try:
-                    config = types.GenerateContentConfig(system_instruction=persona)
-                    analysis_prompt = f"{base_prompt}\n\n[기사 정보]\n제목: {item['title_en']}\n요약: {item['summary_en']}\n**[출력 지침]**\n1. 리포트가 길어지면 안 됩니다. 각 항목은 '2~3줄 이내의 짧은 Bullet Point'로 요약하세요.\n2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하여 구체적이고 참신한 아이디어를 제안해 주세요."
-                    response = client.models.generate_content(model="gemini-2.5-flash", contents=analysis_prompt, config=config)
-                    st.markdown(response.text)
-                except Exception as e:
-                    st.error(f"🚨 분석 중 오류가 발생했습니다: {e}")
+@st.dialog("🤖 NGEPT 전략 분석 모달", width="large")
+def show_analysis_modal(item, api_key, persona, base_prompt, raw_news_pool):
+    # 모달 내부 탭 구성
+    tab1, tab2 = st.tabs(["📝 기사 1분 요약", "📊 심층 발표 리포트"])
+    
+    # --- TAB 1: 기존 1분 요약 ---
+    with tab1:
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            img_src = item.get('thumbnail') if item.get('thumbnail') else f"https://s.wordpress.com/mshots/v1/{item['link']}?w=600"
+            html_content = (
+                '<div style="border-radius: 12px; overflow: hidden; border: 1px solid #eaeaea; background: #fdfdfd;">'
+                f'<img src="{img_src}" style="width:100%; aspect-ratio:16/9; object-fit:cover; display:block; border-bottom: 1px solid #eaeaea;">'
+                '<div style="padding: 16px;">'
+                f'<span style="background-color:#E3F2FD; color:#1565C0; padding:4px 8px; border-radius:12px; font-size:0.7rem; font-weight:700; display:inline-block; margin-bottom:8px;">MATCH {item.get("score", 0)}%</span>'
+                f'<div style="font-weight: 800; font-size: 1.05rem; margin-bottom: 8px; line-height: 1.4; color: #262626;">{item.get("insight_title", item.get("title_en", ""))}</div>'
+                f'<div style="font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 12px;">{item.get("core_summary", item.get("summary_ko", ""))}</div>'
+                f'<a href="{item.get("link", "#")}" target="_blank" style="display:block; font-size:0.85rem; font-weight:bold; color:#0095f6; text-decoration:none;">원문 기사 열기 ↗</a>'
+                '</div></div>'
+            )
+            st.markdown(html_content, unsafe_allow_html=True)
+            
+        with c2:
+            if not api_key:
+                st.error("⚠️ 사이드바에 API Key가 없습니다.")
+            else:
+                # 상태 저장을 통해 탭 이동 시 재호출 방지
+                if f"basic_{item['id']}" not in st.session_state:
+                    with st.spinner("💎 핵심 시그널과 기획 아이디어를 도출 중입니다..."):
+                        client = get_ai_client(api_key)
+                        if client:
+                            try:
+                                config = types.GenerateContentConfig(system_instruction=persona)
+                                analysis_prompt = f"{base_prompt}\n\n[기사 정보]\n제목: {item['title_en']}\n요약: {item['summary_en']}\n**[출력 지침]**\n1. 리포트가 길어지면 안 됩니다. 각 항목은 '2~3줄 이내의 짧은 Bullet Point'로 요약하세요.\n2. 'Implication (기획자 참고 아이디어)' 항목을 마지막에 추가하여 구체적이고 참신한 아이디어를 제안해 주세요."
+                                response = client.models.generate_content(model="gemini-2.5-flash", contents=analysis_prompt, config=config)
+                                st.session_state[f"basic_{item['id']}"] = response.text
+                            except Exception as e:
+                                st.session_state[f"basic_{item['id']}"] = f"🚨 분석 중 오류가 발생했습니다: {e}"
+                
+                if f"basic_{item['id']}" in st.session_state:
+                    st.markdown(st.session_state[f"basic_{item['id']}"])
+
+    # --- TAB 2: 심층 발표 리포트 (Slides) ---
+    with tab2:
+        if f"deep_report_{item['id']}" not in st.session_state:
+            st.markdown("#### 📑 연관 동향 기반 발표 슬라이드 생성")
+            st.markdown("<p style='font-size:0.9rem; color:#64748B; margin-bottom:20px;'>해당 기사를 중심으로 유사한 뉴스 트렌드를 엮어 4장짜리 발표용 초안을 자동 생성합니다.</p>", unsafe_allow_html=True)
+            
+            # 옵션 선택
+            opt = st.radio("수집 및 분석 방식 선택", ["🗂️ 옵션 A. 내부 수집 풀 매칭 (신속/정확)", "🌐 옵션 B. 구글 검색 및 웹 트렌드 확장 (방대한 시야)"], key=f"opt_{item['id']}")
+            
+            if st.button("🚀 심층 리포트 생성 (약 15초 소요)", use_container_width=True, type="primary"):
+                with st.spinner("AI가 연관 트렌드를 분석하여 슬라이드 장표를 기획하고 있습니다..."):
+                    client = get_ai_client(api_key)
+                    if client:
+                        try:
+                            # 프롬프트 구성
+                            report_prompt = f"""
+                            당신은 IT/테크 차세대 경험기획팀의 수석 전략가입니다.
+                            아래 [메인 기사]를 중심으로, 연관된 트렌드를 엮어 '발표용 슬라이드 4장' 분량의 인사이트 리포트를 작성해주세요.
+                            
+                            [메인 기사]
+                            제목: {item['title_en']}
+                            요약: {item['summary_en']}
+                            """
+                            
+                            if "내부" in opt:
+                                pool_context = "\n".join([f"- {n['title_en']} (URL: {n['link']})" for n in raw_news_pool[:15]])
+                                report_prompt += f"\n\n[연관 기사 풀 (참고용)]\n{pool_context}\n위 기사들을 적극 참고하여 시장 동향을 보강하세요."
+                            else:
+                                report_prompt += "\n\n당신의 방대한 웹 트렌드 지식을 총동원하여 연관 최신 동향과 경쟁사 상황을 엮어주세요."
+
+                            report_prompt += """
+                            
+                            [출력 형식 - 반드시 아래 JSON 구조로만 출력하세요]
+                            {
+                                "slides": [
+                                    {
+                                        "slide_num": 1,
+                                        "title": "Executive Summary (이슈 요약)",
+                                        "image_keyword": "tech innovation conceptual",
+                                        "content": ["핵심 메시지 1", "핵심 메시지 2"],
+                                        "refs": [{"title": "출처명", "url": "URL 주소"}]
+                                    },
+                                    {
+                                        "slide_num": 2,
+                                        "title": "Market & Competitor Trend (시장 동향)",
+                                        "image_keyword": "market graph analysis",
+                                        "content": ["...", "..."],
+                                        "refs": []
+                                    },
+                                    {
+                                        "slide_num": 3,
+                                        "title": "User Experience Impact (사용자 경험 파급력)",
+                                        "image_keyword": "user experience UI UX futuristic",
+                                        "content": ["...", "..."],
+                                        "refs": []
+                                    },
+                                    {
+                                        "slide_num": 4,
+                                        "title": "Strategic Implication (우리의 넥스트 스텝)",
+                                        "image_keyword": "strategy roadmap",
+                                        "content": ["...", "..."],
+                                        "refs": []
+                                    }
+                                ]
+                            }
+                            """
+                            # JSON 출력을 강제하기 위해 모델에 명시
+                            config = types.GenerateContentConfig(system_instruction=persona, response_mime_type="application/json")
+                            response = client.models.generate_content(model="gemini-2.5-flash", contents=report_prompt, config=config)
+                            
+                            json_match = re.search(r'\{.*\}', response.text.strip(), re.DOTALL)
+                            if json_match:
+                                parsed_data = json.loads(json_match.group())
+                                st.session_state[f"deep_report_{item['id']}"] = parsed_data.get("slides", [])
+                                st.rerun()
+                            else:
+                                st.error("JSON 파싱에 실패했습니다. 다시 시도해주세요.")
+                        except Exception as e:
+                            st.error(f"리포트 생성 중 오류: {e}")
+
+        else:
+            # 💡 생성된 슬라이드 화면 렌더링
+            slides = st.session_state[f"deep_report_{item['id']}"]
+            slide_titles = [f"Slide {s['slide_num']}. {s['title'].split('(')[0].strip()}" for s in slides]
+            
+            # Streamlit Tabs를 이용한 슬라이드 뷰어 구현
+            slide_tabs = st.tabs(slide_titles)
+            for i, s in enumerate(slides):
+                with slide_tabs[i]:
+                    sc1, sc2 = st.columns([1.2, 2])
+                    with sc1:
+                        # 1번 슬라이드는 원본 이미지, 나머지는 AI 프롬프트 기반 자동 생성 이미지
+                        if i == 0 and item.get('thumbnail'):
+                            img_url = item.get('thumbnail')
+                        else:
+                            kw = s.get('image_keyword', 'technology').replace(" ", "%20")
+                            img_url = f"https://image.pollinations.ai/prompt/{kw}?width=800&height=500&nologo=true"
+                        st.markdown(f'<div style="border-radius:12px; overflow:hidden; border:1px solid #eee;"><img src="{img_url}" style="width:100%; display:block;"></div>', unsafe_allow_html=True)
+                        
+                    with sc2:
+                        st.markdown(f"<h3 style='margin-top:0; color:#0F172A;'>{s['title']}</h3>", unsafe_allow_html=True)
+                        for bullet in s.get('content', []):
+                            st.markdown(f"- <span style='font-size:1.05rem; line-height:1.6;'>{bullet}</span>", unsafe_allow_html=True)
+                        
+                        refs = s.get('refs', [])
+                        if refs:
+                            st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+                            st.markdown("**[Reference]**")
+                            for r in refs:
+                                st.markdown(f"- [{r.get('title', 'Link')}]({r.get('url', '#')})")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🔄 리포트 새로 생성하기", key=f"regen_{item['id']}", use_container_width=True):
+                del st.session_state[f"deep_report_{item['id']}"]
+                st.rerun()
 
 @st.dialog("📤 기사 정보 공유", width="small")
 def show_share_modal(item):
@@ -319,7 +445,7 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         return []
 
     if st_text_ui and pb_ui:
-        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사(뉴스 {len(raw_news)}개 + 커뮤니티 {len(raw_community)}개) 확보! AI 분석 시작...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
+        st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사 확보! AI 심층 분석 시작...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
         pb_ui.progress(0)
 
     current_ctx = get_script_run_ctx()
@@ -405,11 +531,9 @@ st.markdown("""<style>
     [data-testid="stSidebar"] { background-color: #F8FAFC !important; border-right: 1px solid #E2E8F0; }
     .sidebar-label { color: #64748B; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1.5rem; margin-bottom: 0.75rem; padding-left: 5px; }
     
-    /* 사이드바 기본 Primary 버튼 */
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
     div[data-testid="stButton"] button[kind="primary"]:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 114, 255, 0.35); }
     
-    /* 사이드바 기본 Secondary/Tertiary 버튼 (원래 크기 유지) */
     div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="secondary"],
     div[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="tertiary"] {
         border-radius: 12px !important; 
@@ -419,7 +543,6 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 카드 안 액션 버튼 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -462,16 +585,16 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [공통] 모든 라디오 버튼(상단 토글 + 하단 필터 공통) 중앙 정렬 & 블루 포인트 컬러 */
+    /* 💡 모든 라디오 버튼 (상단 토글 + 하단 필터 공통) 중앙 정렬 & 블루 포인트 컬러 */
     [data-testid="stRadio"] {
         display: flex !important;
-        justify-content: center !important; /* 항상 화면 중앙 정렬 */
+        justify-content: center !important; 
         width: 100% !important;
     }
     [data-testid="stRadio"] > div[role="radiogroup"] {
-        background-color: #F1F5F9 !important; /* 연한 회색 바탕 */
+        background-color: #F1F5F9 !important; 
         padding: 4px !important;
-        border-radius: 9999px !important; /* 전체를 감싸는 긴 알약 */
+        border-radius: 9999px !important; 
         display: inline-flex !important;
         gap: 0 !important;
         border: none !important;
@@ -481,8 +604,8 @@ st.markdown("""<style>
     [data-testid="stRadio"] > div[role="radiogroup"] label {
         background-color: transparent !important;
         border: none !important;
-        padding: 8px 24px !important; /* 내부 탭 여백 */
-        border-radius: 9999px !important; /* 내부 탭도 둥근 알약 */
+        padding: 8px 24px !important; 
+        border-radius: 9999px !important; 
         margin: 0 !important;
         cursor: pointer !important;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
@@ -493,19 +616,16 @@ st.markdown("""<style>
     [data-testid="stRadio"] > div[role="radiogroup"] label:hover {
         background-color: #E2E8F0 !important;
     }
-    /* 라디오 원형 아이콘 완전 삭제 */
     [data-testid="stRadio"] > div[role="radiogroup"] label div[data-baseweb="radio"],
     [data-testid="stRadio"] > div[role="radiogroup"] label > div:first-child {
         display: none !important;
     }
-    /* 💡 선택된 탭: 파란색 바탕 + 그림자 (블루 포인트) */
     [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"],
     [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"],
     [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) {
         background-color: #0072FF !important; 
         box-shadow: 0 4px 12px rgba(0, 114, 255, 0.25) !important; 
     }
-    /* 미선택 텍스트 스타일: 회색 */
     [data-testid="stRadio"] > div[role="radiogroup"] label p {
         color: #64748B !important; 
         font-weight: 600 !important;
@@ -513,7 +633,6 @@ st.markdown("""<style>
         margin: 0 !important;
         padding: 0 !important;
     }
-    /* 💡 선택 텍스트 스타일: 흰색 */
     [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p,
     [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"] p,
     [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) p {
@@ -662,7 +781,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.session_state.get("run_sensing", False):
-    st.session_state.run_sensing = False  # 즉시 끄기 방어막
+    st.session_state.run_sensing = False  # 즉시 끄기
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     if not st.session_state.settings.get("api_key", "").strip():
@@ -701,13 +820,14 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-# 💡 [요청사항 반영] 상단 중앙 정렬된 모드 토글 렌더링
+st.markdown("<br>", unsafe_allow_html=True)
+
+# 💡 중앙 정렬된 모드 토글
 view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
 
 raw_news_pool = []
 target_file = MANUAL_CACHE_FILE if st.session_state.view_mode == "실시간 수동 센싱" else "today_news.json"
 
-# 💡 모닝 센싱 파일 업데이트 시간 확인 로직
 file_mtime = None
 if os.path.exists(target_file):
     file_mtime = os.path.getmtime(target_file)
@@ -715,7 +835,6 @@ if os.path.exists(target_file):
         with open(target_file, "r", encoding="utf-8") as f: raw_news_pool = json.load(f)
     except: pass
 
-# 💡 [요청사항 반영] 데일리 모닝 센싱일 경우 타임스탬프 표시
 if st.session_state.view_mode == "데일리 모닝 센싱":
     if file_mtime:
         dt = datetime.fromtimestamp(file_mtime)
@@ -845,8 +964,9 @@ else:
                         if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
+                        # 💡 [모달 연동] raw_news_pool 파라미터 추가
                         if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
-                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
+                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'], raw_news_pool)
 
     # ==========================
     # 🏆 Section 2: Today's Top Picks
@@ -889,8 +1009,9 @@ else:
                         if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
+                        # 💡 [모달 연동] raw_news_pool 파라미터 추가
                         if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
-                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
+                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'], raw_news_pool)
 
     # ==========================
     # 🌊 Section 3: Sensing Stream 
@@ -899,8 +1020,6 @@ else:
         st.markdown("<br><div class='section-header'>🌊 Sensing Stream <span class='section-desc'>기타 관심 동향 타임라인</span></div>", unsafe_allow_html=True)
         
         filter_options = ["전체보기", "글로벌 혁신", "중국 동향", "일본/로보틱스", "커뮤니티 화제"]
-        
-        # 하단 필터도 중앙 정렬된 라디오 버튼으로 생성
         selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed", key="stream_filter")
         st.markdown('<br>', unsafe_allow_html=True)
         
@@ -956,5 +1075,6 @@ else:
                             if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
                                 show_share_modal(item)
                         with act_c3:
+                            # 💡 [모달 연동] raw_news_pool 파라미터 추가
                             if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
-                                show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'])
+                                show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'], raw_news_pool)
