@@ -223,15 +223,15 @@ def show_help_modal():
     st.markdown(html_content, unsafe_allow_html=True)
 
 # ==========================================
-# 📡 [수집 및 AI 필터링 엔진] - 투트랙(Two-track) 수집 적용
+# 📡 [수집 및 AI 필터링 엔진]
 # ==========================================
 def fetch_raw_news(args):
-    cat, f, limit = args
+    cat, f, limit, max_per_feed = args 
     articles = []
     try:
         d = feedparser.parse(f["url"])
         if not d.entries: return []
-        for entry in d.entries[:15]:
+        for entry in d.entries[:max_per_feed]: 
             dt = entry.get('published_parsed') or entry.get('updated_parsed')
             if not dt: continue
             p_date = datetime.fromtimestamp(time.mktime(dt))
@@ -264,11 +264,13 @@ def fetch_raw_news(args):
         pass
     return articles
 
-def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=None):
+def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=None, is_batch_mode=False):
     active_key = settings.get("api_key", "").strip()
     if not active_key: return []
     limit = datetime.now() - timedelta(days=settings["sensing_period"])
-    active_tasks = [(cat, f, limit) for cat, feeds in channels_data.items() if settings["category_active"].get(cat, True) for f in feeds if f.get("active", True)]
+    
+    max_per_feed = 40 if is_batch_mode else 15
+    active_tasks = [(cat, f, limit, max_per_feed) for cat, feeds in channels_data.items() if settings["category_active"].get(cat, True) for f in feeds if f.get("active", True)]
     if not active_tasks: return []
 
     all_raw_items = []
@@ -286,7 +288,6 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
                 st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 전 세계 매체에서 최신 뉴스를 수집 중입니다...</h3><p style='font-size:1.1rem; color:#64748B;'>({i+1} / {total_feeds} 채널 확인 완료)</p></div>", unsafe_allow_html=True)
                 pb_ui.progress((i + 1) / total_feeds)
             
-    # 💡 [핵심 업데이트] 뉴스 vs 커뮤니티 투트랙(Two-track) 분리 확보 로직
     community_domains = ['reddit', 'v2ex', 'hacker news', 'ycombinator', 'clien', 'dcinside', 'blind']
     raw_news = []
     raw_community = []
@@ -299,14 +300,15 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         else:
             raw_news.append(item)
             
-    # 1트랙: 일반 뉴스는 설정값의 1.3배수 확보
-    fetch_limit = int(settings["max_articles"] * 1.3)
+    if is_batch_mode:
+        fetch_limit = int(settings.get("max_articles", 50) * 3.0) 
+        comm_limit = 80 
+    else:
+        fetch_limit = int(settings.get("max_articles", 50) * 1.3) 
+        comm_limit = 40
+        
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:fetch_limit]
-    
-    # 2트랙: 커뮤니티는 뉴스 수집 제한에 밀리지 않도록 무조건 별도로 최신순 40개 확보!
-    raw_community = sorted(raw_community, key=lambda x: x['date_obj'], reverse=True)[:40]
-    
-    # 분석을 위해 다시 합침
+    raw_community = sorted(raw_community, key=lambda x: x['date_obj'], reverse=True)[:comm_limit]
     combined_raw = raw_news + raw_community
     
     client = get_ai_client(active_key)
@@ -417,7 +419,7 @@ st.markdown("""<style>
         padding: 0 14px !important;
     }
 
-    /* 카드 안 액션 버튼: 기존 둥근 사각, 넓은 가로, 0.65rem 텍스트 (원복 유지) */
+    /* 카드 안 액션 버튼 */
     [data-testid="stMain"] [data-testid="stColumn"] div[data-testid="stButton"] button[kind="secondary"] { 
         border-radius: 6px !important; 
         min-height: 24px !important;  
@@ -460,7 +462,7 @@ st.markdown("""<style>
         color: #0F172A !important; 
     }
     
-    /* 💡 [핵심] 모든 라디오 버튼(상단 토글 + 하단 필터 공통)을 중앙 정렬 & 블루 포인트 컬러로 통일 */
+    /* 💡 [공통] 모든 라디오 버튼(상단 토글 + 하단 필터 공통) 중앙 정렬 & 블루 포인트 컬러 */
     [data-testid="stRadio"] {
         display: flex !important;
         justify-content: center !important; /* 항상 화면 중앙 정렬 */
@@ -682,7 +684,7 @@ if st.session_state.get("run_sensing", False):
     st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 실시간 데이터 파이프라인 가동 준비 중...</h3></div>", unsafe_allow_html=True)
     st.markdown("<br><br>", unsafe_allow_html=True)
     
-    all_scored_news = get_filtered_news(st.session_state.settings, st.session_state.channels, st.session_state.settings["filter_prompt"], pb_ui, st_text_ui)
+    all_scored_news = get_filtered_news(st.session_state.settings, st.session_state.channels, st.session_state.settings["filter_prompt"], pb_ui, st_text_ui, is_batch_mode=False)
     
     if not all_scored_news:
         st.error("🛑 수집된 기사가 0개입니다. 수집 기간을 늘려보세요.")
@@ -699,20 +701,33 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# 💡 [요청사항 반영] 상단 중앙 정렬된 모드 토글
+# 💡 [요청사항 반영] 상단 중앙 정렬된 모드 토글 렌더링
 view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
-
-st.markdown("<br>", unsafe_allow_html=True)
 
 raw_news_pool = []
 target_file = MANUAL_CACHE_FILE if st.session_state.view_mode == "실시간 수동 센싱" else "today_news.json"
 
+# 💡 모닝 센싱 파일 업데이트 시간 확인 로직
+file_mtime = None
 if os.path.exists(target_file):
+    file_mtime = os.path.getmtime(target_file)
     try:
         with open(target_file, "r", encoding="utf-8") as f: raw_news_pool = json.load(f)
     except: pass
+
+# 💡 [요청사항 반영] 데일리 모닝 센싱일 경우 타임스탬프 표시
+if st.session_state.view_mode == "데일리 모닝 센싱":
+    if file_mtime:
+        dt = datetime.fromtimestamp(file_mtime)
+        ampm = "오전" if dt.hour < 12 else "오후"
+        hr = dt.hour if dt.hour <= 12 else dt.hour - 12
+        if hr == 0: hr = 12
+        formatted_time = f"{dt.year}년 {dt.month:02d}월 {dt.day:02d}일 {ampm} {hr:02d}:{dt.minute:02d}"
+        st.markdown(f"<div style='text-align:center; color:#64748B; font-size:0.85rem; margin-top: 10px; margin-bottom: 25px;'>🕒 스캔 기준일시 : <b>{formatted_time}</b></div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<br>", unsafe_allow_html=True)
+else:
+    st.markdown("<br>", unsafe_allow_html=True)
 
 f_weight = st.session_state.settings.get("filter_weight", 50)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
@@ -885,6 +900,7 @@ else:
         
         filter_options = ["전체보기", "글로벌 혁신", "중국 동향", "일본/로보틱스", "커뮤니티 화제"]
         
+        # 하단 필터도 중앙 정렬된 라디오 버튼으로 생성
         selected_filter = st.radio("필터", filter_options, horizontal=True, label_visibility="collapsed", key="stream_filter")
         st.markdown('<br>', unsafe_allow_html=True)
         
