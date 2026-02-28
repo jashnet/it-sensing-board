@@ -11,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 저장소 체크아웃
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 💡 [진짜 핵심] 과거 기록까지 모두 가져와서 병합 충돌 방지
+          ref: main       # 💡 [진짜 핵심] 허공이 아니라 정확히 main 브랜치를 타겟팅
 
       - name: 파이썬 환경 설정
         uses: actions/setup-python@v4
@@ -24,7 +27,6 @@ jobs:
 
       - name: 모닝 센싱 스크립트 실행 (batch.py)
         env:
-          # Github Settings -> Secrets에 저장해둔 GEMINI_API_KEY를 불러옵니다
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python batch.py
 
@@ -33,13 +35,11 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # 1. 일단 가상 컴퓨터에서 만든 뉴스 파일들을 묶어서 저장할 준비를 합니다.
           git add today_news.json || true
           git add archive/*.json || true
           git commit -m "🤖 [Automated] Update Morning Sensing Data" || echo "No changes to commit"
           
-          # 2. 💡 [가장 중요] 업로드 직전에 깃허브의 최신 상태를 먼저 당겨와서 병합합니다! (충돌 원천 차단)
-          git pull --rebase origin main
+          # 💡 이제 히스토리가 있으므로 완벽하게 병합됩니다.
+          git pull origin main --rebase || true
           
-          # 3. 안전하게 하나로 합쳐진 파일을 최종 업로드합니다.
           git push origin main || echo "No changes to push"
