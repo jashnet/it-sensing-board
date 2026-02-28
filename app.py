@@ -210,7 +210,6 @@ def show_analysis_modal(item, api_key, persona, base_prompt, raw_news_pool):
                 del st.session_state[f"deep_report_{item['id']}"]
                 st.rerun()
 
-# 💡 신규 추가됨: 통계 모달 UI
 @st.dialog("📊 데이터 수집 & AI 큐레이션 통계", width="large")
 def show_statistics_modal(raw_pool, f_weight):
     if not raw_pool:
@@ -581,7 +580,6 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
 # ==========================================
 st.set_page_config(page_title="NGEPT Sensing Dashboard", layout="wide")
 
-# 💡 CSS 수정: 이유 설명 오버레이(Feature 2) 스타일 추가됨
 st.markdown("""<style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     [data-testid="stSidebar"] { background-color: #F8FAFC !important; border-right: 1px solid #E2E8F0; }
@@ -613,14 +611,14 @@ st.markdown("""<style>
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
     .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; padding: 15px; z-index: 3; color: white; }
     
-    /* 💡 Feature 2: 추천 이유 오버레이 CSS */
+    /* 💡 Feature 2: 5차원 추천 이유 오버레이 CSS */
     .reason-icon { position: absolute; top: 12px; right: 12px; z-index: 15; background: rgba(255, 255, 255, 0.2); color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; justify-content: center; align-items: center; font-size: 13px; cursor: help; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.4); }
     .reason-icon:hover { background: rgba(0, 114, 255, 0.8); }
     .reason-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(5px); z-index: 14; opacity: 0; visibility: hidden; transition: all 0.3s ease; display: flex; flex-direction: column; justify-content: center; padding: 25px; box-sizing: border-box; text-align: left; }
     .reason-icon:hover + .reason-overlay, .reason-overlay:hover { opacity: 1; visibility: visible; }
-    .reason-title { font-size: 0.9rem; font-weight: 800; color: #38BDF8; margin-bottom: 12px; }
-    .reason-text { font-size: 0.85rem; color: #E2E8F0; line-height: 1.6; }
-    .reason-highlight { color: #BAE6FD; font-weight: 700; background: rgba(56, 189, 248, 0.2); padding: 0 4px; border-radius: 4px; }
+    .reason-title { font-size: 0.95rem; font-weight: 800; color: #38BDF8; margin-bottom: 15px; }
+    .reason-text { font-size: 0.85rem; color: #E2E8F0; line-height: 1.5; margin-bottom: 6px; }
+    .reason-highlight { color: #BAE6FD; font-weight: 700; background: rgba(56, 189, 248, 0.15); padding: 1px 5px; border-radius: 4px; }
     
     .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-bottom: 8px; margin-right: 6px; }
     .badge-fire { background: #e74c3c; color: white; }
@@ -783,7 +781,6 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-# 💡 데이터 로드 (모드 변경 시 즉시 반영되도록 사전 로드)
 target_file = MANUAL_CACHE_FILE if st.session_state.get("view_mode", "데일리 모닝 센싱") == "실시간 수동 센싱" else "today_news.json"
 raw_news_pool = []
 file_mtime = None
@@ -796,7 +793,6 @@ if os.path.exists(target_file):
 f_weight = st.session_state.settings.get("filter_weight", 50)
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 💡 중앙 정렬 모드 토글 + 요약 통계 버튼 UI
 c_left, c_center, c_right = st.columns([1, 2, 1])
 with c_center:
     view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
@@ -887,25 +883,61 @@ else:
 
     stream_news = [a for a in remaining_news if a['id'] not in used_ids]
 
-    # 💡 [핵심 연동] Hero 카드의 추천 이유 텍스트 생성기
+    # 💡 [핵심 연동] 5차원 다면적 데이터 기반 Hero 카드 추천 이유 생성기
     def get_reason_text(item):
         reasons = []
+        
+        # 1. 🧠 학습된 취향(RLHF) 및 AI 스코어링
         score = item.get("score", 0)
-        if score >= 90:
-            reasons.append(f"✔️ AI 매칭 점수가 <span class='reason-highlight'>{score}점</span>으로 매우 높아 <b>핵심 트렌드</b>로 분류되었습니다.")
-        elif score >= 70:
-            reasons.append(f"✔️ AI 매칭 점수 <span class='reason-highlight'>{score}점</span>을 획득하여 <b>주요 동향</b>으로 선정되었습니다.")
+        has_prefs = len(st.session_state.get("learned_prefs", [])) > 0
+        if score >= 85 and has_prefs:
+            reasons.append(f"<div class='reason-text'>✔️ <b>맞춤형 타겟팅:</b> 팀장님이 지시하신 <span class='reason-highlight'>선호 기사 학습 규칙</span>에 정확히 부합하여 최고점({score}점)이 부여되었습니다.</div>")
+        elif score >= 90:
+            reasons.append(f"<div class='reason-text'>✔️ <b>핵심 트렌드:</b> AI 매칭 점수 <span class='reason-highlight'>{score}점</span>으로 NGEPT 전략에 매우 강하게 연결됩니다.</div>")
         else:
-            reasons.append(f"✔️ NGEPT 관심 카테고리 내 설정된 기준(점수: {score}점)에 부합합니다.")
+            reasons.append(f"<div class='reason-text'>✔️ <b>주요 동향:</b> AI 매칭 점수 <span class='reason-highlight'>{score}점</span>을 획득하여 유효한 큐레이션으로 선정되었습니다.</div>")
             
+        # 2. ⚡ 정보의 최신성 (Velocity)
+        try:
+            date_str = item.get("date_obj", "")
+            if date_str:
+                pub_date = datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                hours_diff = (datetime.now() - pub_date).total_seconds() / 3600
+                if 0 <= hours_diff <= 24:
+                    reasons.append(f"<div class='reason-text'>✔️ <b>최신 속보:</b> 발행된 지 <span class='reason-highlight'>{max(1, int(hours_diff))}시간 이내</span>의 따끈따끈한 최신 업계 동향입니다.</div>")
+        except: pass
+        
+        # 3. 🏢 매체의 권위 (Source Authority)
+        tier1_sources = ['techcrunch', 'verge', 'wired', 'bloomberg', 'cnbc', 'wsj', 'reuters', 'engadget', 'nikkei', 'gizmodo']
+        source_lower = item.get("source", "unknown").lower()
+        if any(t in source_lower for t in tier1_sources):
+            reasons.append(f"<div class='reason-text'>✔️ <b>매체 권위:</b> 글로벌 IT 트렌드를 선도하는 <span class='reason-highlight'>Tier 1 매체({item.get('source')})</span>에서 다룬 심도 있는 기사입니다.</div>")
+        elif item.get("content_type") == "community":
+            reasons.append(f"<div class='reason-text'>✔️ <b>현장 반응:</b> 얼리어답터들이 모인 <span class='reason-highlight'>해외 긱(Geek) 커뮤니티</span>의 날것 그대로의 생생한 토론입니다.</div>")
+
+        # 4. 🏷️ AI 핵심 추출 키워드 (Topic Tags)
+        kws = item.get("keywords", [])
+        if kws:
+            formatted_kws = ", ".join([f"#{k}" for k in kws[:3]])
+            reasons.append(f"<div class='reason-text'>✔️ <b>핵심 키워드:</b> <span class='reason-highlight'>{formatted_kws}</span> 테마를 강하게 내포하고 있어 차세대 기획에 유효합니다.</div>")
+            
+        # 5. 📰 기사의 성격/유형 (Article Intent)
+        text_for_intent = (item.get("title_en", "") + " " + item.get("summary_en", "")).lower()
+        if any(w in text_for_intent for w in ['launch', 'unveil', 'release', 'announce', 'introduce', '출시', '공개']):
+            reasons.append("<div class='reason-text'>✔️ <b>기사 성격:</b> 단순 루머가 아닌, 기업의 <span class='reason-highlight'>[신규 폼팩터/서비스 공식 발표]</span> 데이터입니다.</div>")
+        elif any(w in text_for_intent for w in ['review', 'hands-on', 'test', '리뷰']):
+            reasons.append("<div class='reason-text'>✔️ <b>기사 성격:</b> 특정 제품 및 기술에 대한 전문가의 <span class='reason-highlight'>[심층 리뷰 및 벤치마크 분석]</span>이 포함되어 있습니다.</div>")
+        elif any(w in text_for_intent for w in ['earnings', 'revenue', 'q1', 'q2', 'q3', 'q4', 'profit', 'acquire', 'merger', '실적']):
+            reasons.append("<div class='reason-text'>✔️ <b>기사 성격:</b> 비즈니스 규모와 시장 장악력을 보여주는 <span class='reason-highlight'>[기업 실적 및 M&A 동향]</span>입니다.</div>")
+
+        # + 알파: 커뮤니티 버즈 및 중복 보도
         if item.get("community_buzz"):
-            kws = ", ".join(item.get("buzz_words", []))
-            reasons.append(f"✔️ 긱 커뮤니티에서 <span class='reason-highlight'>{kws}</span> 관련 화제성이 급증하여 <b>소셜 가산점</b>이 반영되었습니다.")
-            
+            buzz_kws = ", ".join(item.get("buzz_words", []))
+            reasons.append(f"<div class='reason-text'>✔️ <b>소셜 화제성:</b> 소셜 미디어 상에서 <span class='reason-highlight'>{buzz_kws}</span> 관련 화제성이 급증해 가산점을 받았습니다.</div>")
         if item.get("dup_count", 1) > 1:
-            reasons.append(f"✔️ <span class='reason-highlight'>{item['dup_count']}개 이상의 글로벌 매체</span>에서 동시다발적으로 보도 중인 중복 검증 이슈입니다.")
+            reasons.append(f"<div class='reason-text'>✔️ <b>교차 검증:</b> <span class='reason-highlight'>{item['dup_count']}개 이상의 매체</span>에서 동시다발적으로 보도 중인 확실한 메가 트렌드입니다.</div>")
             
-        return "<br><br>".join(reasons)
+        return "".join(reasons)
 
     # ==========================
     # 🔥 Section 1: MUST KNOW
@@ -928,11 +960,10 @@ else:
                         f'<img src="{img_src}" class="hero-bg" onerror="this.src=\'https://via.placeholder.com/800x600/1a1a1a/ffffff?text=MUST+KNOW\';">'
                         '<div class="hero-overlay"></div>'
                         '</a>'
-                        # 💡 오버레이 아이콘 추가
                         '<div class="reason-icon" title="추천 이유 확인">💡</div>'
                         '<div class="reason-overlay">'
                         '<div class="reason-title">🎯 Why Recommended?</div>'
-                        f'<div class="reason-text">{reason_text}</div>'
+                        f'{reason_text}'
                         '</div>'
                         '<div class="hero-content">'
                         f'<span class="badge badge-fire">{dup_badge}</span> '
@@ -980,11 +1011,10 @@ else:
                         f'<img src="{img_src}" class="hero-bg" onerror="this.src=\'https://via.placeholder.com/800x600/1a1a1a/ffffff?text=TOP+PICK\';">'
                         '<div class="hero-overlay"></div>'
                         '</a>'
-                        # 💡 오버레이 아이콘 추가
                         '<div class="reason-icon" title="추천 이유 확인">💡</div>'
                         '<div class="reason-overlay">'
                         '<div class="reason-title">🎯 Why Recommended?</div>'
-                        f'<div class="reason-text">{reason_text}</div>'
+                        f'{reason_text}'
                         '</div>'
                         '<div class="hero-content">'
                         f'{cat_badge} '
