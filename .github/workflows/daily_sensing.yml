@@ -12,6 +12,7 @@ concurrency:
 jobs:
   run-batch:
     runs-on: ubuntu-latest
+    timeout-minutes: 15    # 💡 [핵심] 15분 이상 무한 로딩 걸리면 무조건 강제 종료(좀비 방지!)
     permissions:
       contents: write
 
@@ -41,12 +42,15 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
+          # 💡 [방어막] 보이지 않는 에디터 창이 열려서 무한 대기하는 것을 원천 차단
+          export GIT_MERGE_AUTOEDIT=no
+          
           git add today_news.json
           git add archive/*.json || true
           
           git commit -m "🤖 [Automated] Update Morning Sensing Data" || exit 0
           
-          # 💡 [핵심] 업로드 전에 무조건 최신 코드를 당겨와서 병합합니다!
-          git pull origin main --rebase -X ours
+          # 입력 대기 없이 강제로 최신 코드 당겨오기
+          git pull origin main --rebase -X ours --no-edit
           
           git push origin main
