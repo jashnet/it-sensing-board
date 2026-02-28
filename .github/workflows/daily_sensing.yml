@@ -35,11 +35,14 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
+          # Git 병합 방식을 '일반 병합'으로 기본 설정 (경고 메시지 방지)
+          git config pull.rebase false
+          
           git add today_news.json || true
           git add archive/*.json || true
           git commit -m "🤖 [Automated] Update Morning Sensing Data" || echo "No changes to commit"
           
-          # 💡 이제 히스토리가 있으므로 완벽하게 병합됩니다.
-          git pull origin main --rebase || true
+          # 💡 [진짜 최종 무적 코드] 깃허브에 다른 파일이 있든 말든, 충돌이 나면 무조건 지금 내가 만든 파일(ours)로 강제 덮어쓰면서 합쳐라!
+          git pull origin main -X ours --no-edit
           
-          git push origin main || echo "No changes to push"
+          git push origin main
