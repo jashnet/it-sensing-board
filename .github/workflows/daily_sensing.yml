@@ -32,9 +32,11 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # 💡 파일이 없거나 에러가 나도 무시하고 넘어가도록 '|| true' 추가
           git add today_news.json || true
           git add archive/*.json || true
-          # 💡 변경 사항이 없으면 에러 대신 메시지를 띄우고 패스하도록 방어막 추가
           git commit -m "🤖 [Automated] Update Morning Sensing Data" || echo "No changes to commit"
+          
+          # 💡 [핵심 추가] 푸시하기 전에 깃허브의 최신 코드를 먼저 당겨와서 병합합니다 (충돌 원천 차단)
+          git pull --rebase origin main
+          
           git push || echo "No changes to push"
