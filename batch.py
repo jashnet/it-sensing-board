@@ -14,6 +14,17 @@ from collections import Counter
 # 외부 프롬프트
 from prompts import DEFAULT_FILTER_PROMPT
 
+# 💡 추가됨: 팀장님의 선호 학습 규칙을 불러오는 함수
+def load_prefs():
+    pref_file = "learned_preferences.json"
+    if os.path.exists(pref_file):
+        try:
+            with open(pref_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
 def run_morning_batch():
     print("🌅 [모닝 센싱] 자동화 봇 작동을 시작합니다...")
     
@@ -85,6 +96,16 @@ def run_morning_batch():
     raw_news = sorted(raw_news, key=lambda x: x['date_obj'], reverse=True)[:100]
     print(f"✅ 총 {len(raw_news)}개 기사 1차 확보 완료. AI 채점을 시작합니다.")
 
+    # 💡💡💡 핵심 추가: 학습된 선호 기사 규칙 병합
+    base_prompt = DEFAULT_FILTER_PROMPT
+    learned_rules = load_prefs()
+    if learned_rules:
+        print(f"🧠 [RLHF] 팀장님이 지시한 {len(learned_rules)}개의 학습 규칙을 AI의 두뇌에 주입합니다.")
+        rules_text = "\n".join([f"- {r}" for r in learned_rules])
+        base_prompt += f"\n\n[🚨 최우선 가중치 (팀장님 선호 학습 규칙)]\n아래 규칙에 부합하는 기사는 반드시 높은 가산점(80점 이상)을 부여하여 핵심 이슈로 선정하세요:\n{rules_text}"
+    else:
+        print("ℹ️ 적용된 추가 학습 규칙이 없습니다. 기본 프롬프트로 진행합니다.")
+
     client = genai.Client(api_key=api_key)
     processed_items = []
     
@@ -92,7 +113,9 @@ def run_morning_batch():
         try:
             import random
             time.sleep(random.uniform(0.5, 1.5)) # API 제한 회피
-            score_query = f"{DEFAULT_FILTER_PROMPT}\n\n[평가 대상]\n매체: {item['source']}\n링크: {item['link']}\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
+            
+            # 💡 수정됨: DEFAULT_FILTER_PROMPT 대신 규칙이 병합된 base_prompt 사용
+            score_query = f"{base_prompt}\n\n[평가 대상]\n매체: {item['source']}\n링크: {item['link']}\n제목: {item['title_en']}\n요약: {item['summary_en'][:200]}"
             response = client.models.generate_content(model="gemini-2.5-flash", contents=score_query)
             
             json_match = re.search(r'\{.*\}', response.text.strip(), re.DOTALL)
