@@ -85,7 +85,7 @@ def load_user_settings(user_id):
         "top_picks_count": 6, "top_picks_global_ratio": 70,
         "filter_prompt": DEFAULT_FILTER_PROMPT,
         "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
-        "gems_persona": GEMS_PERSONA, # 💡 페르소나 저장용 필드 추가
+        "gems_persona": GEMS_PERSONA, 
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True}
     }
     if os.path.exists(fn):
@@ -361,7 +361,6 @@ def learning_dialog(api_key):
     st.caption("관심 있는 기사 URL을 넣거나 직접 규칙을 입력하면, AI가 이를 기억하고 다음 스캔부터 최우선 반영합니다.")
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # 💡 [핵심] st.rerun() 대신 콜백 함수를 사용하여 창 닫힘 방지
     def delete_rule_cb(idx):
         if 0 <= idx < len(st.session_state.learned_prefs):
             st.session_state.learned_prefs.pop(idx)
@@ -372,13 +371,11 @@ def learning_dialog(api_key):
         if val and val not in st.session_state.learned_prefs:
             st.session_state.learned_prefs.append(val)
             save_prefs(st.session_state.learned_prefs)
-            st.session_state.custom_rule_input = "" # 입력창 즉시 초기화
+            st.session_state.custom_rule_input = "" 
             st.session_state.show_rule_success = True
     
-    # 좌/우 2단 모던 레이아웃
     c1, spacer, c2 = st.columns([1, 0.05, 1.2])
     
-    # [좌측] 적용된 학습 규칙 리스트
     with c1:
         st.markdown("#### 📚 적용된 학습 규칙")
         if not st.session_state.learned_prefs:
@@ -387,10 +384,8 @@ def learning_dialog(api_key):
             for idx, pref in enumerate(st.session_state.learned_prefs):
                 with st.container(border=True):
                     st.markdown(f"<div style='font-size:0.85rem; color:#334155; margin-bottom:10px; line-height:1.4;'>{pref}</div>", unsafe_allow_html=True)
-                    # on_click으로 데이터 처리
                     st.button("🗑️ 삭제", key=f"del_{idx}", on_click=delete_rule_cb, args=(idx,), use_container_width=True)
                         
-    # [우측] 자동 학습 & 수동 입력
     with c2:
         st.markdown("#### 🔗 1. 링크로 자동 학습")
         url_input = st.text_input("URL 입력", placeholder="https://techcrunch.com/...", label_visibility="collapsed")
@@ -403,7 +398,6 @@ def learning_dialog(api_key):
                         try:
                             prompt = f"당신은 차세대 경험기획팀(NGEPT)의 수석 AI 튜너입니다.\n사용자가 아래 기사 URL을 '선호 기사'로 지정했습니다. 이 기사에서 가장 돋보이는 **구체적인 제품 폼팩터, 핵심 기술, 사용자 경험(UX) 전략, 또는 특정 IP/브랜드의 참신한 시도**를 파악하세요.\n그리고 앞으로 이런 구체적인 요소가 포함된 기사에 높은 점수를 주도록, 시스템 프롬프트용 지시사항(1~2줄)을 작성해주세요.\n\n[주의사항]\n- 절대 '혁신적인 고객 경험', '시장 트렌드', '기술 동향' 같은 뻔하고 포괄적인 단어를 쓰지 마세요.\n- URL: {url_input}"
                             res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-                            # 추천된 내용을 텍스트 영역에 바로 꽂아넣기
                             st.session_state.custom_rule_input = res.text.strip()
                         except Exception as e:
                             st.error(f"오류: {e}")
@@ -414,18 +408,15 @@ def learning_dialog(api_key):
         
         st.markdown("#### ✍️ 2. 학습 내용 수동 입력")
         
-        # 성공 메시지 임시 표시 로직
         if st.session_state.get("show_rule_success"):
             st.success("✅ 새로운 규칙이 학습되었습니다!")
             st.session_state.show_rule_success = False
         
-        # 텍스트 영역 키 초기화
         if "custom_rule_input" not in st.session_state:
             st.session_state.custom_rule_input = ""
             
         st.text_area("지시사항 입력", key="custom_rule_input", height=120, placeholder="예: 레트로 감성을 자극하는 실물 하드웨어 기획 사례에 80점 이상 부여", label_visibility="collapsed")
         
-        # on_click으로 데이터 처리
         st.button("💾 이 규칙 추가하기", type="primary", use_container_width=True, on_click=add_rule_cb)
 
 # ==========================================
@@ -528,7 +519,6 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사 확보! AI 심층 분석 시작...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
         pb_ui.progress(0)
 
-    # 💡 핵심 연동: 학습된 규칙(RLHF)을 AI 프롬프트에 동적 병합
     learned_rules = load_prefs()
     if learned_rules:
         rules_text = "\n".join([f"- {r}" for r in learned_rules])
@@ -631,10 +621,13 @@ st.markdown("""<style>
     [data-testid="stRadio"] > div[role="radiogroup"] label p { color: #64748B !important; font-weight: 600 !important; font-size: 0.9rem !important; margin: 0 !important; padding: 0 !important; }
     [data-testid="stRadio"] > div[role="radiogroup"] label[data-checked="true"] p, [data-testid="stRadio"] > div[role="radiogroup"] label[aria-checked="true"] p, [data-testid="stRadio"] > div[role="radiogroup"] label:has(input:checked) p { color: #FFFFFF !important; font-weight: 800 !important; }
     .stTextInput>div>div>input { border-radius: 10px; }
-    .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 2rem 2.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
-    .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; }
-    .hero-h1 { margin: 0; font-size: 2.6rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .hero-subtitle { margin-top: 15px; font-size: 1.1rem; color: #64748B; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 0; }
+    
+    /* 💡 타이틀 영역 여백 대폭 축소 */
+    .hero-banner { background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%); padding: 1.2rem 2rem; border-radius: 12px; text-align: center; margin-bottom: 0.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #eaeaea; position: relative; }
+    .hero-badge { display: inline-block; background: #2c3e50; color: white; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; margin-bottom: 6px; letter-spacing: 1px; }
+    .hero-h1 { margin: 0; font-size: 2.1rem; font-weight: 900; background: linear-gradient(45deg, #1A2980 0%, #26D0CE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero-subtitle { margin-top: 5px; font-size: 1rem; color: #64748B; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 0; }
+    
     .hero-img-box { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 5px; }
     .hero-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
     .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.85) 100%); z-index: 2; }
@@ -647,12 +640,13 @@ st.markdown("""<style>
     .badge-buzz { background: #f39c12; color: white; }
     .badge-tag { background: #ecf0f1; color: #333; font-weight: 600; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; margin-right: 8px; display: inline-block; margin-bottom: 8px;}
     .hero-title { font-size: 1.15rem; font-weight: 800; line-height: 1.3; margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-    .section-header { font-size: 1.5rem; font-weight: 700; margin: 30px 0 20px 0; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+    
+    /* 💡 섹션 헤더(MUST KNOW 등) 위아래 여백 대폭 축소 */
+    .section-header { font-size: 1.4rem; font-weight: 700; margin: 15px 0 10px 0; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px; }
     .section-desc { font-size: 1rem; color: #888; font-weight: normal; margin-left: 5px; }
 </style>""", unsafe_allow_html=True)
 
 if "channels" not in st.session_state: st.session_state.channels = load_channels_from_file()
-# 💡 세션 상태에 학습 규칙 변수 초기화
 if "learned_prefs" not in st.session_state: st.session_state.learned_prefs = load_prefs()
 
 if "view_mode" not in st.session_state:
@@ -738,7 +732,6 @@ with st.sidebar:
     tp_ratio = st.slider("🌐 글로벌 뉴스 비율 (%)", min_value=0, max_value=100, value=current_tp_ratio, step=10, help="Top Picks에 글로벌 혁신 기사를 몇 퍼센트(%) 할당할지 결정합니다. 나머지는 중국 동향으로 채워집니다.")
     st.session_state.settings["top_picks_global_ratio"] = tp_ratio
 
-    # 💡 깔끔해진 3개의 팝업 버튼 메뉴
     with st.expander("⚙️ 고급 설정", expanded=False):
         st.markdown("<p style='font-size:0.8rem; color:#64748B;'>프롬프트 및 AI 설정을 관리합니다.</p>", unsafe_allow_html=True)
         
@@ -767,17 +760,17 @@ with st.sidebar:
 # ==========================================
 # 4. 메인 컨텐츠 영역
 # ==========================================
+# 💡 불필요한 줄바꿈 제거, 히어로 배너 타이트하게 렌더링
 st.markdown("""
 <div class="hero-banner">
     <div class="hero-badge">AI-POWERED CURATION</div>
     <h1 class="hero-h1">NGEPT Sensing Dashboard</h1>
-    <p class="hero-subtitle">차세대 경험기획팀을 위한 데일리 센싱 분석 보드</p>
+    <p class="hero-subtitle">차세대 경험기획팀 데일리 트렌드 분석</p>
 </div>
 """, unsafe_allow_html=True)
 
 if st.session_state.get("run_sensing", False):
     st.session_state.run_sensing = False 
-    st.markdown("<br><br>", unsafe_allow_html=True)
     
     if not st.session_state.settings.get("api_key", "").strip():
         st.error("🛑 사이드바에 Gemini API Key가 없습니다!")
@@ -796,7 +789,6 @@ if st.session_state.get("run_sensing", False):
     pb_ui = st.progress(0)
     
     st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 실시간 데이터 파이프라인 가동 준비 중...</h3></div>", unsafe_allow_html=True)
-    st.markdown("<br><br>", unsafe_allow_html=True)
     
     all_scored_news = get_filtered_news(st.session_state.settings, st.session_state.channels, st.session_state.settings["filter_prompt"], pb_ui, st_text_ui, is_batch_mode=False)
     
@@ -815,9 +807,7 @@ if st.session_state.get("run_sensing", False):
     pb_ui.empty()
     st.rerun()
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# 💡 중앙 정렬된 모드 토글
+# 💡 중앙 정렬된 모드 토글 (위아래 빈 공간 최소화)
 view_mode = st.radio("모드", ["데일리 모닝 센싱", "실시간 수동 센싱"], horizontal=True, label_visibility="collapsed", key="view_mode")
 
 raw_news_pool = []
@@ -830,18 +820,14 @@ if os.path.exists(target_file):
         with open(target_file, "r", encoding="utf-8") as f: raw_news_pool = json.load(f)
     except: pass
 
-if st.session_state.view_mode == "데일리 모닝 센싱":
-    if file_mtime:
-        dt = datetime.fromtimestamp(file_mtime)
-        ampm = "오전" if dt.hour < 12 else "오후"
-        hr = dt.hour if dt.hour <= 12 else dt.hour - 12
-        if hr == 0: hr = 12
-        formatted_time = f"{dt.year}년 {dt.month:02d}월 {dt.day:02d}일 {ampm} {hr:02d}:{dt.minute:02d}"
-        st.markdown(f"<div style='text-align:center; color:#64748B; font-size:0.85rem; margin-top: 10px; margin-bottom: 25px;'>🕒 스캔 기준일시 : <b>{formatted_time}</b></div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<br>", unsafe_allow_html=True)
-else:
-    st.markdown("<br>", unsafe_allow_html=True)
+if st.session_state.view_mode == "데일리 모닝 센싱" and file_mtime:
+    dt = datetime.fromtimestamp(file_mtime)
+    ampm = "오전" if dt.hour < 12 else "오후"
+    hr = dt.hour if dt.hour <= 12 else dt.hour - 12
+    if hr == 0: hr = 12
+    formatted_time = f"{dt.year}년 {dt.month:02d}월 {dt.day:02d}일 {ampm} {hr:02d}:{dt.minute:02d}"
+    # 💡 마진 대폭 축소 (margin-top: 5px; margin-bottom: 5px;)
+    st.markdown(f"<div style='text-align:center; color:#64748B; font-size:0.85rem; margin-top: 5px; margin-bottom: 5px;'>🕒 스캔 기준일시 : <b>{formatted_time}</b></div>", unsafe_allow_html=True)
 
 f_weight = st.session_state.settings.get("filter_weight", 50)
 news_list = [n for n in raw_news_pool if n.get("score", 0) >= f_weight]
@@ -959,7 +945,6 @@ else:
                         if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
-                        # 💡 연동됨: 사용자 설정 페르소나 전달
                         if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), st.session_state.settings.get("gems_persona", GEMS_PERSONA), st.session_state.settings['ai_prompt'], raw_news_pool)
 
@@ -1004,7 +989,6 @@ else:
                         if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
-                        # 💡 연동됨: 사용자 설정 페르소나 전달
                         if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
                             show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), st.session_state.settings.get("gems_persona", GEMS_PERSONA), st.session_state.settings['ai_prompt'], raw_news_pool)
 
@@ -1070,6 +1054,5 @@ else:
                             if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
                                 show_share_modal(item)
                         with act_c3:
-                            # 💡 연동됨: 사용자 설정 페르소나 전달
                             if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
                                 show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), st.session_state.settings.get("gems_persona", GEMS_PERSONA), st.session_state.settings['ai_prompt'], raw_news_pool)
