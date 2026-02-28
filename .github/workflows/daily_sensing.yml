@@ -32,11 +32,14 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # 1. 일단 가상 컴퓨터에서 만든 뉴스 파일들을 묶어서 저장할 준비를 합니다.
           git add today_news.json || true
           git add archive/*.json || true
           git commit -m "🤖 [Automated] Update Morning Sensing Data" || echo "No changes to commit"
           
-          # 💡 [핵심 추가] 푸시하기 전에 깃허브의 최신 코드를 먼저 당겨와서 병합합니다 (충돌 원천 차단)
+          # 2. 💡 [가장 중요] 업로드 직전에 깃허브의 최신 상태를 먼저 당겨와서 병합합니다! (충돌 원천 차단)
           git pull --rebase origin main
           
-          git push || echo "No changes to push"
+          # 3. 안전하게 하나로 합쳐진 파일을 최종 업로드합니다.
+          git push origin main || echo "No changes to push"
