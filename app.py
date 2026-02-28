@@ -559,9 +559,17 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         kws = cp.get('keywords', [])
         if isinstance(kws, list): community_keywords.extend([str(k).upper() for k in kws])
             
+    # 💡 [하이브리드 융합] 모닝 센싱이 뽑아둔 커뮤니티 핫 키워드 파일(morning_buzz.json)을 읽어와서 병합합니다!
     comm_kw_counts = Counter(community_keywords)
     hot_comm_keywords = set([k for k, v in comm_kw_counts.items() if v >= 1])
-
+    
+    try:
+        if os.path.exists("morning_buzz.json"):
+            with open("morning_buzz.json", "r", encoding="utf-8") as bf:
+                buzz_data = json.load(bf)
+                saved_kws = buzz_data.get("keywords", [])
+                hot_comm_keywords.update(saved_kws) # 아침에 뽑아둔 버즈 키워드 합치기!
+    except: pass
     for news in news_pool:
         news_kws = set([str(k).upper() for k in news.get('keywords', [])])
         overlap = news_kws.intersection(hot_comm_keywords)
