@@ -2,15 +2,12 @@ name: 🌅 Daily Morning Sensing Batch
 
 on:
   schedule:
-    # 한국 시간 기준 매일 아침 7시 (UTC 시간으로는 밤 10시)에 자동 실행
     - cron: '0 22 * * *'
-  workflow_dispatch: # 수동으로 버튼을 눌러 실행
+  workflow_dispatch:
 
 jobs:
   run-batch:
     runs-on: ubuntu-latest
-    
-    # 💡 봇이 깃허브 저장소에 파일을 쓸 수 있도록 명시적 권한을 부여합니다.
     permissions:
       contents: write
 
@@ -18,7 +15,8 @@ jobs:
       - name: 저장소 체크아웃
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 과거 기록을 모두 불러와 충돌 방지
+          ref: main         # 💡 처음부터 무조건 main 브랜치 기준으로 작업 시작!
+          fetch-depth: 0    # 💡 과거 기록을 모두 가져와서 꼬임 방지
 
       - name: 파이썬 환경 설정
         uses: actions/setup-python@v4
@@ -39,18 +37,15 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Git 병합 방식을 설정하여 에러 방지
-          git config pull.rebase false
+          # 1. 봇이 방금 생성한 파일들만 콕 집어서 추가합니다.
+          git add today_news.json
+          git add archive/ || true
           
-          # 수집된 파일을 장바구니에 담기 (파일이 없어도 에러 내지 않고 무시)
-          git add today_news.json || echo "No today_news.json to add"
-          git add archive/*.json || echo "No archive files to add"
+          # 2. 커밋을 시도합니다. (만약 뉴스가 없어서 바뀐 내용이 없다면 여기서 깔끔하게 성공 상태로 종료합니다)
+          git commit -m "🤖 [Automated] Update Morning Sensing Data" || exit 0
           
-          # 포장하기
-          git commit -m "🤖 [Automated] Update Morning Sensing Data" || echo "No changes to commit"
+          # 3. 푸시하기 직전에 깃허브의 최신 코드를 당겨와서 병합합니다. (충돌 원천 차단)
+          git pull --rebase origin main
           
-          # 혹시 모를 충돌을 대비해 최신 버전을 내 파일로 강제 덮어쓰며 합치기
-          git pull origin main -X ours --no-edit || true
-          
-          # 💡 [가장 중요] 깃허브 공식 토큰을 사용하여 무조건 강제 전송(Push)
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+          # 4. 최종 업로드!
+          git push origin main
