@@ -333,7 +333,17 @@ def learning_dialog(api_key):
                     client = get_ai_client(api_key)
                     if client:
                         try:
-                            prompt = f"당신은 NGEPT 팀의 수석 큐레이터입니다. 다음 기사 URL의 핵심 내용을 파악하고, 앞으로 이런 류의 기사(기술 트렌드, 기업 동향 등)를 수집할 때 무조건 높은 점수(80점 이상)를 주도록 시스템 프롬프트용 1~2줄짜리 지시사항을 작성해줘. URL: {url_input}"
+                            prompt = f"""당신은 차세대 경험기획팀(NGEPT)의 수석 AI 튜너입니다.
+                            사용자가 아래 기사 URL을 '선호 기사'로 지정했습니다. 이 기사에서 가장 돋보이는 **구체적인 제품 특징, 폼팩터/하드웨어, 핵심 기술, 사용자 경험(UX) 전략, 또는 특정 IP/브랜드의 참신한 시도**를 파악하세요.
+                            그리고 앞으로 이런 구체적인 요소가 포함된 기사에 높은 점수를 주도록, 시스템 프롬프트용 지시사항(1~2줄)을 작성해주세요.
+                            
+                            [주의사항]
+                            - 절대 "혁신적인 고객 경험", "시장 트렌드", "기술 동향" 같은 뻔하고 포괄적인 단어를 쓰지 마세요.
+                            - 예시 1: "레트로 감성을 자극하는 실물 하드웨어/오프라인 굿즈 기획 사례에 80점 이상 부여"
+                            - 예시 2: "특정 IP(포켓몬 등)를 활용한 이색적인 팬덤 확장 전략 기사 우대"
+                            - 예시 3: "스마트워치를 넘어선 스마트 링(Smart Ring) 등 차세대 웨어러블 폼팩터의 신제품 출시와 새로운 신체 부위 기반의 사용자 데이터 수집(UX) 사례를 다루는 기사 우대"
+                            - URL: {url_input}"""
+                            
                             res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
                             st.session_state.suggested_text = res.text.strip()
                         except Exception as e:
