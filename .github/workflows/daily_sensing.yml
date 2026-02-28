@@ -4,17 +4,21 @@ on:
   schedule:
     # 한국 시간 기준 매일 아침 7시 (UTC 시간으로는 밤 10시)에 자동 실행
     - cron: '0 22 * * *'
-  workflow_dispatch: # 수동으로도 버튼을 눌러 돌릴 수 있게 함
+  workflow_dispatch: # 수동으로 버튼을 눌러 실행
 
 jobs:
   run-batch:
     runs-on: ubuntu-latest
+    
+    # 💡 봇이 깃허브 저장소에 파일을 쓸 수 있도록 명시적 권한을 부여합니다.
+    permissions:
+      contents: write
+
     steps:
       - name: 저장소 체크아웃
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 💡 [진짜 핵심] 과거 기록까지 모두 가져와서 병합 충돌 방지
-          ref: main       # 💡 [진짜 핵심] 허공이 아니라 정확히 main 브랜치를 타겟팅
+          fetch-depth: 0  # 과거 기록을 모두 불러와 충돌 방지
 
       - name: 파이썬 환경 설정
         uses: actions/setup-python@v4
@@ -35,14 +39,18 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Git 병합 방식을 '일반 병합'으로 기본 설정 (경고 메시지 방지)
+          # Git 병합 방식을 설정하여 에러 방지
           git config pull.rebase false
           
-          git add today_news.json || true
-          git add archive/*.json || true
+          # 수집된 파일을 장바구니에 담기 (파일이 없어도 에러 내지 않고 무시)
+          git add today_news.json || echo "No today_news.json to add"
+          git add archive/*.json || echo "No archive files to add"
+          
+          # 포장하기
           git commit -m "🤖 [Automated] Update Morning Sensing Data" || echo "No changes to commit"
           
-          # 💡 [진짜 최종 무적 코드] 깃허브에 다른 파일이 있든 말든, 충돌이 나면 무조건 지금 내가 만든 파일(ours)로 강제 덮어쓰면서 합쳐라!
-          git pull origin main -X ours --no-edit
+          # 혹시 모를 충돌을 대비해 최신 버전을 내 파일로 강제 덮어쓰며 합치기
+          git pull origin main -X ours --no-edit || true
           
-          git push origin main
+          # 💡 [가장 중요] 깃허브 공식 토큰을 사용하여 무조건 강제 전송(Push)
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
