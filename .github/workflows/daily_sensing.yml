@@ -5,7 +5,6 @@ on:
     - cron: '0 22 * * *'
   workflow_dispatch:
 
-# 💡 [핵심 추가] 여러 개의 서버가 동시에 달리는 것을 원천 차단 (충돌의 주범 해결!)
 concurrency:
   group: morning-sensing
   cancel-in-progress: true
@@ -45,16 +44,11 @@ jobs:
           git add today_news.json
           git add archive/*.json || true
           
-          # 바뀐 파일이 없으면 억지로 진행하지 않고 평화롭게 종료합니다.
-          if git diff-index --quiet HEAD; then
-            echo "No changes to commit"
-            exit 0
-          fi
+          # 바뀐 게 없으면 여기서 조용히 끝냅니다.
+          git commit -m "🤖 [Automated] Update Morning Sensing Data" || exit 0
           
-          git commit -m "🤖 [Automated] Update Morning Sensing Data"
+          # 💡 [핵심] 깃허브의 최신 코드를 무조건 먼저 당겨옵니다. (로그에 이 명령어가 꼭 찍혀야 합니다!)
+          git pull origin main --rebase
           
-          # 💡 [안전 장치] 혹시라도 다른 변동사항이 생겼다면 내 데이터 기준으로 강제 병합합니다.
-          git pull origin main --no-rebase -X ours --no-edit || true
-          
-          # 🚀 최종 발송!
+          # 🚀 최종 덮어쓰기
           git push origin main
