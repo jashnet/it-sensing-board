@@ -53,7 +53,7 @@ SPINNER_SVG = """
 # ==========================================
 CHANNELS_FILE = "channels.json"
 MANUAL_CACHE_FILE = "manual_cache.json"
-PREF_FILE = "learned_preferences.json" # 💡 추가됨: 학습 규칙 저장용 파일
+PREF_FILE = "learned_preferences.json"
 
 def load_channels_from_file():
     if os.path.exists(CHANNELS_FILE):
@@ -67,7 +67,6 @@ def save_channels_to_file(channels_data):
         with open(CHANNELS_FILE, "w", encoding="utf-8") as f: json.dump(channels_data, f, ensure_ascii=False, indent=4)
     except: pass
 
-# 💡 추가됨: 학습 규칙 로드/저장 함수
 def load_prefs():
     if os.path.exists(PREF_FILE):
         try:
@@ -86,6 +85,7 @@ def load_user_settings(user_id):
         "top_picks_count": 6, "top_picks_global_ratio": 70,
         "filter_prompt": DEFAULT_FILTER_PROMPT,
         "ai_prompt": "위 기사를 우리 팀의 'NOD 프로젝트' 관점에서 심층 분석해줘.",
+        "gems_persona": GEMS_PERSONA, # 💡 페르소나 저장용 필드 추가
         "category_active": {"Global Innovation": True, "China & East Asia": True, "Japan & Robotics": True}
     }
     if os.path.exists(fn):
@@ -116,7 +116,6 @@ def safe_translate(text):
 
 @st.dialog("🤖 NGEPT 전략 분석 모달", width="large")
 def show_analysis_modal(item, api_key, persona, base_prompt, raw_news_pool):
-    # 기존 코드 동일 유지 (너무 길어서 생략하지 않고 그대로 유지)
     tab1, tab2 = st.tabs(["📝 기사 1분 요약", "📊 심층 발표 리포트"])
     
     with tab1:
@@ -309,83 +308,109 @@ def show_help_modal():
         'NGEPT Sensing Dashboard는 단순한 뉴스 나열이 아닙니다. '
         '구글의 <strong>Gemini 2.5 Flash</strong> 엔진과 <strong>소셜 리스닝(Social Listening)</strong> 기법이 결합된 5단계 심층 큐레이션 파이프라인을 거칩니다.'
         '</p>'
-        # ... (중간 도움말 생략 없이 기존과 동일하게 유지 - 코드 길이상 요약 처리)
         '<p style="color: #64748B; font-size: 0.85rem; line-height: 1.5;">(1. Global Sensing -> 2. AI Deep Scoring -> 3. Social Listening -> 4. Clustering -> 5. Zero-Latency Rendering)</p>'
         '</div>'
     )
     st.markdown(html_content, unsafe_allow_html=True)
 
-# 💡 💡 💡 추가됨: 선호 기사 학습(RLHF) 모달 팝업 함수
-@st.dialog("🧠 선호 기사 학습 (AI 튜닝)", width="large")
+# ---------------------------------------------------------
+# 💡 1. 뉴스 필터 프롬프트 팝업
+# ---------------------------------------------------------
+@st.dialog("⚙️ 뉴스 필터 프롬프트 설정", width="large")
+def filter_prompt_dialog():
+    st.markdown("### 🔍 뉴스 수집 필터링 기준")
+    st.caption("모닝 센싱 및 수동 센싱 시 AI가 기사를 평가(0~100점)하는 기준 프롬프트입니다.")
+    
+    new_prompt = st.text_area("필터 프롬프트 입력", value=st.session_state.settings.get("filter_prompt", ""), height=350, label_visibility="collapsed")
+    
+    if st.button("💾 필터 프롬프트 저장", type="primary", use_container_width=True):
+        st.session_state.settings["filter_prompt"] = new_prompt
+        save_user_settings(st.session_state.current_user, st.session_state.settings)
+        st.success("✅ 성공적으로 저장되었습니다!")
+        time.sleep(0.5)
+        st.rerun()
+
+# ---------------------------------------------------------
+# 💡 2. AI 심층 분석 프롬프트 (Persona) 팝업
+# ---------------------------------------------------------
+@st.dialog("🤖 AI 심층 분석 프롬프트 설정", width="large")
+def persona_prompt_dialog():
+    st.markdown("### 🧠 AI 페르소나 및 분석 지시어")
+    st.caption("대시보드에서 기사의 'AI 분석' 버튼을 눌렀을 때 작동하는 역할(Persona)과 기본 질문입니다.")
+    
+    st.markdown("**1. 시스템 페르소나 (System Instruction)**")
+    new_persona = st.text_area("페르소나", value=st.session_state.settings.get("gems_persona", GEMS_PERSONA), height=200, label_visibility="collapsed")
+    
+    st.markdown("**2. 기본 분석 질문 (Base Prompt)**")
+    new_ai_prompt = st.text_area("질문", value=st.session_state.settings.get("ai_prompt", ""), height=80, label_visibility="collapsed")
+    
+    if st.button("💾 AI 분석 프롬프트 저장", type="primary", use_container_width=True):
+        st.session_state.settings["gems_persona"] = new_persona
+        st.session_state.settings["ai_prompt"] = new_ai_prompt
+        save_user_settings(st.session_state.current_user, st.session_state.settings)
+        st.success("✅ 성공적으로 저장되었습니다!")
+        time.sleep(0.5)
+        st.rerun()
+
+# ---------------------------------------------------------
+# 💡 3. 선호 기사 학습 (AI 튜닝) 팝업 (모던 2단 레이아웃)
+# ---------------------------------------------------------
+@st.dialog("✨ 선호 기사 학습 (AI 튜닝)", width="large")
 def learning_dialog(api_key):
-    st.write("관심 있는 기사 링크를 넣거나 직접 지시사항을 입력하면, AI가 이를 기억하고 다음 스캔부터 **Hero 카드(Top Picks)**에 우선 배치합니다.")
+    st.markdown("### 🎯 내 취향을 AI에게 학습시키기")
+    st.caption("관심 있는 기사 URL을 넣거나 직접 규칙을 입력하면, AI가 이를 기억하고 다음 스캔부터 최우선 반영합니다.")
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    # --- 1. URL 기반 자동 추천 ---
-    st.subheader("🔗 1. 링크로 자동 학습")
-    url_input = st.text_input("기사 URL 입력", placeholder="예: https://techcrunch.com/...")
+    # 💡 좌/우 2단 모던 레이아웃
+    c1, spacer, c2 = st.columns([1, 0.05, 1.2])
     
-    if st.button("✨ 이 기사로 학습 내용 추천받기", use_container_width=True):
-        if url_input:
-            if not api_key:
-                st.error("사이드바에 API Key를 먼저 입력해주세요.")
-            else:
-                with st.spinner("AI가 기사를 분석하여 학습 규칙을 생성 중입니다..."):
+    # [좌측] 적용된 학습 규칙 리스트
+    with c1:
+        st.markdown("#### 📚 적용된 학습 규칙")
+        if not st.session_state.learned_prefs:
+            st.info("현재 적용된 맞춤형 학습 규칙이 없습니다.")
+        else:
+            for idx, pref in enumerate(st.session_state.learned_prefs):
+                with st.container(border=True):
+                    st.markdown(f"<div style='font-size:0.85rem; color:#334155; margin-bottom:10px; line-height:1.4;'>{pref}</div>", unsafe_allow_html=True)
+                    if st.button("🗑️ 삭제", key=f"del_{idx}", use_container_width=True):
+                        st.session_state.learned_prefs.pop(idx)
+                        save_prefs(st.session_state.learned_prefs)
+                        st.rerun()
+                        
+    # [우측] 자동 학습 & 수동 입력
+    with c2:
+        st.markdown("#### 🔗 1. 링크로 자동 학습")
+        url_input = st.text_input("URL 입력", placeholder="https://techcrunch.com/...", label_visibility="collapsed")
+        if st.button("✨ URL로 프롬프트 추천받기", use_container_width=True):
+            if url_input and api_key:
+                with st.spinner("AI가 기사를 분석 중입니다..."):
                     client = get_ai_client(api_key)
                     if client:
                         try:
-                            prompt = f"""당신은 차세대 경험기획팀(NGEPT)의 수석 AI 튜너입니다.
-                            사용자가 아래 기사 URL을 '선호 기사'로 지정했습니다. 이 기사에서 가장 돋보이는 **구체적인 제품 특징, 폼팩터/하드웨어, 핵심 기술, 사용자 경험(UX) 전략, 또는 특정 IP/브랜드의 참신한 시도**를 파악하세요.
-                            그리고 앞으로 이런 구체적인 요소가 포함된 기사에 높은 점수를 주도록, 시스템 프롬프트용 지시사항(1~2줄)을 작성해주세요.
-                            
-                            [주의사항]
-                            - 절대 "혁신적인 고객 경험", "시장 트렌드", "기술 동향" 같은 뻔하고 포괄적인 단어를 쓰지 마세요.
-                            - 예시 1: "레트로 감성을 자극하는 실물 하드웨어/오프라인 굿즈 기획 사례에 80점 이상 부여"
-                            - 예시 2: "특정 IP(포켓몬 등)를 활용한 이색적인 팬덤 확장 전략 기사 우대"
-                            - 예시 3: "스마트워치를 넘어선 스마트 링(Smart Ring) 등 차세대 웨어러블 폼팩터의 신제품 출시와 새로운 신체 부위 기반의 사용자 데이터 수집(UX) 사례를 다루는 기사 우대"
-                            - URL: {url_input}"""
-                            
+                            prompt = f"당신은 차세대 경험기획팀(NGEPT)의 수석 AI 튜너입니다.\n사용자가 아래 기사 URL을 '선호 기사'로 지정했습니다. 이 기사에서 가장 돋보이는 **구체적인 제품 폼팩터, 핵심 기술, 사용자 경험(UX) 전략, 또는 특정 IP/브랜드의 참신한 시도**를 파악하세요.\n그리고 앞으로 이런 구체적인 요소가 포함된 기사에 높은 점수를 주도록, 시스템 프롬프트용 지시사항(1~2줄)을 작성해주세요.\n\n[주의사항]\n- 절대 '혁신적인 고객 경험', '시장 트렌드', '기술 동향' 같은 뻔하고 포괄적인 단어를 쓰지 마세요.\n- URL: {url_input}"
                             res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
                             st.session_state.suggested_text = res.text.strip()
                         except Exception as e:
-                            st.error(f"기사를 분석하는 중 오류가 발생했습니다: {e}")
-        else:
-            st.warning("URL을 먼저 입력해주세요.")
+                            st.error(f"오류: {e}")
+            elif not api_key:
+                st.warning("사이드바에 API 키를 먼저 입력해주세요.")
+        
+        st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
+        
+        st.markdown("#### ✍️ 2. 학습 내용 수동 입력")
+        default_val = st.session_state.get('suggested_text', "")
+        user_learning_text = st.text_area("지시사항 입력", value=default_val, height=120, placeholder="예: 레트로 감성을 자극하는 실물 하드웨어 기획 사례에 80점 이상 부여", label_visibility="collapsed")
+        
+        if st.button("💾 이 규칙 추가하기", type="primary", use_container_width=True):
+            if user_learning_text and user_learning_text not in st.session_state.learned_prefs:
+                st.session_state.learned_prefs.append(user_learning_text)
+                save_prefs(st.session_state.learned_prefs)
+                st.session_state.suggested_text = ""
+                st.success("✅ 새로운 규칙이 학습되었습니다!")
+                time.sleep(0.5)
+                st.rerun()
 
-    st.divider()
-
-    # --- 2. 수동 입력 및 저장 ---
-    st.subheader("✍️ 2. 학습 내용 입력")
-    st.caption("위에서 추천받은 내용을 수정하거나 직접 지시사항을 입력하세요.")
-    
-    default_val = st.session_state.get('suggested_text', "")
-    user_learning_text = st.text_area("AI에게 내릴 지시사항", value=default_val, height=80, 
-                                      placeholder="예: 스마트 링 등 새로운 웨어러블 폼팩터 관련 기사는 무조건 80점 이상 할당")
-    
-    if st.button("💾 이 규칙 저장하기", type="primary", use_container_width=True):
-        if user_learning_text and user_learning_text not in st.session_state.learned_prefs:
-            st.session_state.learned_prefs.append(user_learning_text)
-            save_prefs(st.session_state.learned_prefs)
-            st.session_state.suggested_text = "" # 입력창 초기화
-            st.success("✅ 학습 완료! 다음 센싱부터 AI 평가 기준에 즉시 반영됩니다.")
-            time.sleep(1) # 모달이 닫히기 전 메시지 표시를 위해 잠깐 대기
-            st.rerun()
-
-    st.divider()
-    
-    # --- 3. 학습 리스트 관리 (조회 및 삭제) ---
-    st.subheader("📚 현재 적용 중인 학습 규칙 리스트")
-    if not st.session_state.learned_prefs:
-        st.info("아직 학습된 규칙이 없습니다. 시스템이 기본 프롬프트로만 동작합니다.")
-    else:
-        for idx, pref in enumerate(st.session_state.learned_prefs):
-            col1, col2 = st.columns([8, 2])
-            with col1:
-                st.info(f"💡 {pref}")
-            with col2:
-                if st.button("🗑️ 삭제", key=f"del_{idx}", use_container_width=True):
-                    st.session_state.learned_prefs.pop(idx)
-                    save_prefs(st.session_state.learned_prefs)
-                    st.rerun()
 
 # ==========================================
 # 📡 [수집 및 AI 필터링 엔진]
@@ -487,7 +512,7 @@ def get_filtered_news(settings, channels_data, _prompt, pb_ui=None, st_text_ui=N
         st_text_ui.markdown(f"<div style='text-align:center; padding:10px;'><h3 style='color:#1E293B;'>{SPINNER_SVG} 총 {total_items}개 기사 확보! AI 심층 분석 시작...</h3><p style='font-size:1.1rem; color:#64748B;'>(0 / {total_items} 분석 완료)</p></div>", unsafe_allow_html=True)
         pb_ui.progress(0)
 
-    # 💡 💡 💡 핵심 연동: 학습된 규칙(RLHF)을 AI 프롬프트에 동적 병합
+    # 💡 핵심 연동: 학습된 규칙(RLHF)을 AI 프롬프트에 동적 병합
     learned_rules = load_prefs()
     if learned_rules:
         rules_text = "\n".join([f"- {r}" for r in learned_rules])
@@ -572,7 +597,6 @@ st.set_page_config(page_title="NGEPT Sensing Dashboard", layout="wide")
 
 st.markdown("""<style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    /* 기존 스타일 그대로 유지 (공간상 생략된 것처럼 보이지만 CSS 그대로입니다) */
     [data-testid="stSidebar"] { background-color: #F8FAFC !important; border-right: 1px solid #E2E8F0; }
     .sidebar-label { color: #64748B; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1.5rem; margin-bottom: 0.75rem; padding-left: 5px; }
     div[data-testid="stButton"] button[kind="primary"] { background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%); color: white; border: none; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 15px rgba(0, 114, 255, 0.25); transition: all 0.2s ease; }
@@ -698,16 +722,19 @@ with st.sidebar:
     tp_ratio = st.slider("🌐 글로벌 뉴스 비율 (%)", min_value=0, max_value=100, value=current_tp_ratio, step=10, help="Top Picks에 글로벌 혁신 기사를 몇 퍼센트(%) 할당할지 결정합니다. 나머지는 중국 동향으로 채워집니다.")
     st.session_state.settings["top_picks_global_ratio"] = tp_ratio
 
-    with st.expander("⚙️ 고급 프롬프트 설정", expanded=False):
-        f_prompt = st.text_area("🔍 필터 프롬프트", value=st.session_state.settings["filter_prompt"], height=200)
-        st.session_state.settings["filter_prompt"] = f_prompt
+    # 💡 깔끔해진 3개의 팝업 버튼 메뉴
+    with st.expander("⚙️ 고급 설정", expanded=False):
+        st.markdown("<p style='font-size:0.8rem; color:#64748B;'>프롬프트 및 AI 설정을 관리합니다.</p>", unsafe_allow_html=True)
         
-        a_prompt = st.text_area("📝 분석 프롬프트", value=st.session_state.settings["ai_prompt"], height=100)
-        st.session_state.settings["ai_prompt"] = a_prompt
+        if st.button("🔍 뉴스 필터 프롬프트", use_container_width=True):
+            filter_prompt_dialog()
+            
+        if st.button("🤖 AI 심층 분석 프롬프트", use_container_width=True):
+            persona_prompt_dialog()
+            
+        st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
         
-        # 💡 💡 💡 추가됨: 선호 기사 학습 버튼을 고급 설정 하위에 배치
-        st.markdown("---")
-        if st.button("🧠 선호 기사 학습 (AI 튜닝)", use_container_width=True):
+        if st.button("✨ 선호 기사 학습 (AI 튜닝)", type="primary", use_container_width=True):
             learning_dialog(st.session_state.settings.get("api_key", "").strip())
 
     save_user_settings(st.session_state.current_user, st.session_state.settings)
@@ -916,8 +943,9 @@ else:
                         if st.button("공유", key=f"share_mk_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
+                        # 💡 연동됨: 사용자 설정 페르소나 전달
                         if st.button("AI 분석", key=f"btn_mk_{item['id']}_{i}", type="secondary", use_container_width=True):
-                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'], raw_news_pool)
+                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), st.session_state.settings.get("gems_persona", GEMS_PERSONA), st.session_state.settings['ai_prompt'], raw_news_pool)
 
     # ==========================
     # 🏆 Section 2: Today's Top Picks
@@ -960,8 +988,9 @@ else:
                         if st.button("공유", key=f"share_tp_{item['id']}_{i}", type="tertiary", use_container_width=True):
                             show_share_modal(item)
                     with act_c3:
+                        # 💡 연동됨: 사용자 설정 페르소나 전달
                         if st.button("AI 분석", key=f"btn_tp_{item['id']}_{i}", type="secondary", use_container_width=True):
-                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'], raw_news_pool)
+                            show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), st.session_state.settings.get("gems_persona", GEMS_PERSONA), st.session_state.settings['ai_prompt'], raw_news_pool)
 
     # ==========================
     # 🌊 Section 3: Sensing Stream 
@@ -1025,5 +1054,6 @@ else:
                             if st.button("공유", key=f"share_st_{item['id']}_{i}", type="tertiary", use_container_width=True):
                                 show_share_modal(item)
                         with act_c3:
+                            # 💡 연동됨: 사용자 설정 페르소나 전달
                             if st.button("AI 분석", key=f"btn_st_{item['id']}_{i}", type="secondary", use_container_width=True):
-                                show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), GEMS_PERSONA, st.session_state.settings['ai_prompt'], raw_news_pool)
+                                show_analysis_modal(item, st.session_state.settings.get("api_key", "").strip(), st.session_state.settings.get("gems_persona", GEMS_PERSONA), st.session_state.settings['ai_prompt'], raw_news_pool)
