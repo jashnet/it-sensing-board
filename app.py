@@ -353,7 +353,7 @@ def persona_prompt_dialog():
         st.rerun()
 
 # ---------------------------------------------------------
-# 💡 3. 선호 기사 학습 (AI 튜닝) 팝업 (모던 2단 레이아웃)
+# 💡 3. 선호 기사 학습 (AI 튜닝) 팝업 (모던 2단 레이아웃 + 창 유지 로직 적용)
 # ---------------------------------------------------------
 @st.dialog("✨ 선호 기사 학습 (AI 튜닝)", width="large")
 def learning_dialog(api_key):
@@ -361,7 +361,21 @@ def learning_dialog(api_key):
     st.caption("관심 있는 기사 URL을 넣거나 직접 규칙을 입력하면, AI가 이를 기억하고 다음 스캔부터 최우선 반영합니다.")
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # 💡 좌/우 2단 모던 레이아웃
+    # 💡 [핵심] st.rerun() 대신 콜백 함수를 사용하여 창 닫힘 방지
+    def delete_rule_cb(idx):
+        if 0 <= idx < len(st.session_state.learned_prefs):
+            st.session_state.learned_prefs.pop(idx)
+            save_prefs(st.session_state.learned_prefs)
+
+    def add_rule_cb():
+        val = st.session_state.custom_rule_input.strip()
+        if val and val not in st.session_state.learned_prefs:
+            st.session_state.learned_prefs.append(val)
+            save_prefs(st.session_state.learned_prefs)
+            st.session_state.custom_rule_input = "" # 입력창 즉시 초기화
+            st.session_state.show_rule_success = True
+    
+    # 좌/우 2단 모던 레이아웃
     c1, spacer, c2 = st.columns([1, 0.05, 1.2])
     
     # [좌측] 적용된 학습 규칙 리스트
@@ -373,15 +387,14 @@ def learning_dialog(api_key):
             for idx, pref in enumerate(st.session_state.learned_prefs):
                 with st.container(border=True):
                     st.markdown(f"<div style='font-size:0.85rem; color:#334155; margin-bottom:10px; line-height:1.4;'>{pref}</div>", unsafe_allow_html=True)
-                    if st.button("🗑️ 삭제", key=f"del_{idx}", use_container_width=True):
-                        st.session_state.learned_prefs.pop(idx)
-                        save_prefs(st.session_state.learned_prefs)
-                        st.rerun()
+                    # on_click으로 데이터 처리
+                    st.button("🗑️ 삭제", key=f"del_{idx}", on_click=delete_rule_cb, args=(idx,), use_container_width=True)
                         
     # [우측] 자동 학습 & 수동 입력
     with c2:
         st.markdown("#### 🔗 1. 링크로 자동 학습")
         url_input = st.text_input("URL 입력", placeholder="https://techcrunch.com/...", label_visibility="collapsed")
+        
         if st.button("✨ URL로 프롬프트 추천받기", use_container_width=True):
             if url_input and api_key:
                 with st.spinner("AI가 기사를 분석 중입니다..."):
@@ -390,7 +403,8 @@ def learning_dialog(api_key):
                         try:
                             prompt = f"당신은 차세대 경험기획팀(NGEPT)의 수석 AI 튜너입니다.\n사용자가 아래 기사 URL을 '선호 기사'로 지정했습니다. 이 기사에서 가장 돋보이는 **구체적인 제품 폼팩터, 핵심 기술, 사용자 경험(UX) 전략, 또는 특정 IP/브랜드의 참신한 시도**를 파악하세요.\n그리고 앞으로 이런 구체적인 요소가 포함된 기사에 높은 점수를 주도록, 시스템 프롬프트용 지시사항(1~2줄)을 작성해주세요.\n\n[주의사항]\n- 절대 '혁신적인 고객 경험', '시장 트렌드', '기술 동향' 같은 뻔하고 포괄적인 단어를 쓰지 마세요.\n- URL: {url_input}"
                             res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-                            st.session_state.suggested_text = res.text.strip()
+                            # 추천된 내용을 텍스트 영역에 바로 꽂아넣기
+                            st.session_state.custom_rule_input = res.text.strip()
                         except Exception as e:
                             st.error(f"오류: {e}")
             elif not api_key:
@@ -399,18 +413,20 @@ def learning_dialog(api_key):
         st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
         
         st.markdown("#### ✍️ 2. 학습 내용 수동 입력")
-        default_val = st.session_state.get('suggested_text', "")
-        user_learning_text = st.text_area("지시사항 입력", value=default_val, height=120, placeholder="예: 레트로 감성을 자극하는 실물 하드웨어 기획 사례에 80점 이상 부여", label_visibility="collapsed")
         
-        if st.button("💾 이 규칙 추가하기", type="primary", use_container_width=True):
-            if user_learning_text and user_learning_text not in st.session_state.learned_prefs:
-                st.session_state.learned_prefs.append(user_learning_text)
-                save_prefs(st.session_state.learned_prefs)
-                st.session_state.suggested_text = ""
-                st.success("✅ 새로운 규칙이 학습되었습니다!")
-                time.sleep(0.5)
-                st.rerun()
-
+        # 성공 메시지 임시 표시 로직
+        if st.session_state.get("show_rule_success"):
+            st.success("✅ 새로운 규칙이 학습되었습니다!")
+            st.session_state.show_rule_success = False
+        
+        # 텍스트 영역 키 초기화
+        if "custom_rule_input" not in st.session_state:
+            st.session_state.custom_rule_input = ""
+            
+        st.text_area("지시사항 입력", key="custom_rule_input", height=120, placeholder="예: 레트로 감성을 자극하는 실물 하드웨어 기획 사례에 80점 이상 부여", label_visibility="collapsed")
+        
+        # on_click으로 데이터 처리
+        st.button("💾 이 규칙 추가하기", type="primary", use_container_width=True, on_click=add_rule_cb)
 
 # ==========================================
 # 📡 [수집 및 AI 필터링 엔진]
